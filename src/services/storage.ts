@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   SELECTED_MEMORIES: 'nemonic_selected_memories',
   SELECTED_DOCUMENTS: 'nemonic_selected_documents',
   SYSTEM_PROMPT: 'nemonic_system_prompt',
+  MODEL_USAGE: 'nemonic_model_usage',
 };
 
 export function saveMessages(messages: Message[]): void {
@@ -108,4 +109,68 @@ export function loadSystemPrompt(): string {
     console.error('Error loading system prompt:', error);
     return '';
   }
+}
+
+export interface ModelUsage {
+  modelId: string;
+  requestCount: number;
+  totalTokens: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  lastUsed: number;
+  pricing?: {
+    prompt: number;
+    completion: number;
+  };
+}
+
+export function trackModelUsage(
+  modelId: string, 
+  tokens: number,
+  promptTokens?: number,
+  completionTokens?: number,
+  pricing?: { prompt: number; completion: number }
+): void {
+  try {
+    const usageData = loadModelUsage();
+    const existing = usageData.find(u => u.modelId === modelId);
+    
+    if (existing) {
+      existing.requestCount += 1;
+      existing.totalTokens += tokens;
+      if (promptTokens !== undefined) existing.totalPromptTokens += promptTokens;
+      if (completionTokens !== undefined) existing.totalCompletionTokens += completionTokens;
+      existing.lastUsed = Date.now();
+      if (pricing) existing.pricing = pricing;
+    } else {
+      usageData.push({
+        modelId,
+        requestCount: 1,
+        totalTokens: tokens,
+        totalPromptTokens: promptTokens || 0,
+        totalCompletionTokens: completionTokens || 0,
+        lastUsed: Date.now(),
+        pricing,
+      });
+    }
+    
+    localStorage.setItem(STORAGE_KEYS.MODEL_USAGE, JSON.stringify(usageData));
+  } catch (error) {
+    console.error('Error tracking model usage:', error);
+  }
+}
+
+export function loadModelUsage(): ModelUsage[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.MODEL_USAGE);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error loading model usage:', error);
+    return [];
+  }
+}
+
+export function getModelUsage(modelId: string): ModelUsage | undefined {
+  const usage = loadModelUsage();
+  return usage.find(u => u.modelId === modelId);
 }

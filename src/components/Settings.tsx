@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Settings as SettingsIcon, X, Search, RefreshCw } from 'lucide-react';
-import { loadAPIKey, saveAPIKey, loadModel, saveModel, loadSystemPrompt, saveSystemPrompt } from '../services/storage';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Settings as SettingsIcon, X, Search, RefreshCw, ArrowUpDown, Filter } from 'lucide-react';
+import { loadAPIKey, saveAPIKey, loadModel, saveModel, loadSystemPrompt, saveSystemPrompt, loadModelUsage } from '../services/storage';
 import { getModels, ModelInfo } from '../services/openrouter';
 
 interface SettingsProps {
@@ -16,6 +16,17 @@ export default function Settings({ onModelChange }: SettingsProps) {
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [hasLoadedModels, setHasLoadedModels] = useState(false);
+  const [sortBy, setSortBy] = useState<'name' | 'price' | 'usage' | 'provider'>('usage');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [filterProvider, setFilterProvider] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<string>('');
+  const [minContext, setMinContext] = useState<string>('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [usageData, setUsageData] = useState(loadModelUsage());
+
+  const refreshUsageData = useCallback(() => {
+    setUsageData(loadModelUsage());
+  }, []);
 
   const loadAvailableModels = useCallback(async () => {
     setIsLoadingModels(true);
@@ -35,8 +46,9 @@ export default function Settings({ onModelChange }: SettingsProps) {
     if (isOpen) {
       // Try to load models immediately when settings open
       loadAvailableModels();
+      refreshUsageData();
     }
-  }, [isOpen, loadAvailableModels]);
+  }, [isOpen, loadAvailableModels, refreshUsageData]);
 
   useEffect(() => {
     // Reload models when API key changes (if we've already loaded once)
@@ -53,25 +65,88 @@ export default function Settings({ onModelChange }: SettingsProps) {
     setIsOpen(false);
   };
 
-  const filteredModels = availableModels.filter(m => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      m.id.toLowerCase().includes(query) ||
-      m.name?.toLowerCase().includes(query) ||
-      m.description?.toLowerCase().includes(query)
-    );
-  });
 
-  // Sort models: popular ones first, then alphabetically
-  const sortedModels = [...filteredModels].sort((a, b) => {
-    const popular = ['openai/gpt-4', 'openai/gpt-3.5', 'anthropic/claude', 'google/gemini'];
-    const aIsPopular = popular.some(p => a.id.includes(p));
-    const bIsPopular = popular.some(p => b.id.includes(p));
-    if (aIsPopular && !bIsPopular) return -1;
-    if (!aIsPopular && bIsPopular) return 1;
-    return a.id.localeCompare(b.id);
-  });
+  // Get unique providers
+  const providers = useMemo(() => {
+    const providerSet = new Set<string>();
+    availableModels.forEach(m => {
+      const provider = m.id.split('/')[0];
+      if (provider) providerSet.add(provider);
+    });
+    return Array.from(providerSet).sort();
+  }, [availableModels]);
+
+  // Filter models
+  const filteredModels = useMemo(() => {
+    return availableModels.filter(m => {
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesSearch = 
+          m.id.toLowerCase().includes(query) ||
+          m.name?.toLowerCase().includes(query) ||
+          m.description?.toLowerCase().includes(query);
+        if (!matchesSearch) return false;
+      }
+
+      // Provider filter
+      if (filterProvider) {
+        if (!m.id.startsWith(filterProvider + '/')) return false;
+      }
+
+      // Price filter
+      if (maxPrice) {
+        const promptPrice = parseFloat(m.pricing?.prompt || '0');
+        const maxPriceNum = parseFloat(maxPrice);
+        if (promptPrice > maxPriceNum) return false;
+      }
+
+      // Context length filter
+      if (minContext) {
+        const minContextNum = parseInt(minContext);
+        if (!m.context_length || m.context_length < minContextNum) return false;
+      }
+
+      return true;
+    });
+  }, [availableModels, searchQuery, filterProvider, maxPrice, minContext]);
+
+  // Sort models
+  const sortedModels = useMemo(() => {
+    const sorted = [...filteredModels].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'name':
+          comparison = (a.name || a.id).localeCompare(b.name || b.id);
+          break;
+        
+        case 'price':
+          const aPrice = parseFloat(a.pricing?.prompt || '999999');
+          const bPrice = parseFloat(b.pricing?.prompt || '999999');
+          comparison = aPrice - bPrice;
+          break;
+        
+        case 'usage':
+          const aUsage = usageData.find(u => u.modelId === a.id);
+          const bUsage = usageData.find(u => u.modelId === b.id);
+          const aCount = aUsage?.requestCount || 0;
+          const bCount = bUsage?.requestCount || 0;
+          comparison = aCount - bCount;
+          break;
+        
+        case 'provider':
+          const aProvider = a.id.split('/')[0] || '';
+          const bProvider = b.id.split('/')[0] || '';
+          comparison = aProvider.localeCompare(bProvider);
+          break;
+      }
+
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return sorted;
+  }, [filteredModels, sortBy, sortOrder, usageData]);
 
   return (
     <>
@@ -126,15 +201,28 @@ export default function Settings({ onModelChange }: SettingsProps) {
                   <label className="block text-sm font-medium text-gray-300">
                     Model
                   </label>
-                  <button
-                    onClick={loadAvailableModels}
-                    disabled={isLoadingModels}
-                    className="text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-600 flex items-center gap-1"
-                    title="Refresh model list"
-                  >
-                    <RefreshCw size={14} className={isLoadingModels ? 'animate-spin' : ''} />
-                    {isLoadingModels ? 'Loading...' : 'Refresh'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowFilters(!showFilters)}
+                      className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${
+                        showFilters 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      <Filter size={12} />
+                      Filters
+                    </button>
+                    <button
+                      onClick={loadAvailableModels}
+                      disabled={isLoadingModels}
+                      className="text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-600 flex items-center gap-1"
+                      title="Refresh model list"
+                    >
+                      <RefreshCw size={14} className={isLoadingModels ? 'animate-spin' : ''} />
+                      {isLoadingModels ? 'Loading...' : 'Refresh'}
+                    </button>
+                  </div>
                 </div>
                 
                 {isLoadingModels && availableModels.length === 0 ? (
@@ -153,33 +241,126 @@ export default function Settings({ onModelChange }: SettingsProps) {
                         className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
                       />
                     </div>
-                    <select
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
-                    >
-                      {sortedModels.map((m) => {
-                        const pricing = m.pricing?.prompt 
-                          ? ` ($${m.pricing.prompt}/1M prompt`
-                          : '';
-                        const completionPricing = m.pricing?.completion
-                          ? `, $${m.pricing.completion}/1M completion)`
-                          : pricing ? ')' : '';
-                        const context = m.context_length 
-                          ? ` - ${(m.context_length / 1000).toFixed(0)}k ctx`
-                          : '';
-                        return (
-                          <option key={m.id} value={m.id}>
-                            {m.name || m.id}{pricing}{completionPricing}{context}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    {sortedModels.length === 0 && searchQuery && (
-                      <p className="text-xs text-gray-500 mt-1">No models found matching "{searchQuery}"</p>
+
+                    {showFilters && (
+                      <div className="bg-gray-800 border border-gray-700 rounded-lg p-3 mb-2 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">Provider</label>
+                            <select
+                              value={filterProvider}
+                              onChange={(e) => setFilterProvider(e.target.value)}
+                              className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500"
+                            >
+                              <option value="">All Providers</option>
+                              {providers.map(p => (
+                                <option key={p} value={p}>{p}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">Max Price ($/1M)</label>
+                            <input
+                              type="number"
+                              value={maxPrice}
+                              onChange={(e) => setMaxPrice(e.target.value)}
+                              placeholder="No limit"
+                              step="0.01"
+                              className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Min Context Length</label>
+                          <input
+                            type="number"
+                            value={minContext}
+                            onChange={(e) => setMinContext(e.target.value)}
+                            placeholder="No minimum"
+                            className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
                     )}
+
+                    <div className="flex items-center gap-2 mb-2">
+                      <label className="text-xs text-gray-400">Sort by:</label>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as any)}
+                        className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="usage">Usage (Most Used)</option>
+                        <option value="price">Price (Lowest First)</option>
+                        <option value="name">Name (A-Z)</option>
+                        <option value="provider">Provider</option>
+                      </select>
+                      <button
+                        onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                        className="bg-gray-700 hover:bg-gray-600 text-white p-1 rounded"
+                        title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+                      >
+                        <ArrowUpDown size={14} />
+                      </button>
+                    </div>
+
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg max-h-64 overflow-y-auto">
+                      {sortedModels.length === 0 ? (
+                        <div className="p-4 text-center text-gray-400 text-sm">
+                          No models found matching your filters
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-gray-700">
+                          {sortedModels.map((m) => {
+                            const usage = usageData.find(u => u.modelId === m.id);
+                            const promptPrice = parseFloat(m.pricing?.prompt || '0');
+                            const completionPrice = parseFloat(m.pricing?.completion || '0');
+                            const isSelected = model === m.id;
+                            
+                            return (
+                              <button
+                                key={m.id}
+                                onClick={() => setModel(m.id)}
+                                className={`w-full text-left p-3 hover:bg-gray-700 transition-colors ${
+                                  isSelected ? 'bg-blue-600/20 border-l-2 border-blue-500' : ''
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-white text-sm truncate">
+                                      {m.name || m.id}
+                                    </div>
+                                    <div className="text-xs text-gray-400 mt-1 space-y-0.5">
+                                      {m.context_length && (
+                                        <div>Context: {(m.context_length / 1000).toFixed(0)}k tokens</div>
+                                      )}
+                                      {promptPrice > 0 && (
+                                        <div>
+                                          ${promptPrice}/1M prompt
+                                          {completionPrice > 0 && `, $${completionPrice}/1M completion`}
+                                        </div>
+                                      )}
+                                      {usage && usage.requestCount > 0 && (
+                                        <div className="text-blue-400">
+                                          Used {usage.requestCount} time{usage.requestCount !== 1 ? 's' : ''} 
+                                          {' '}({usage.totalTokens.toLocaleString()} tokens)
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {isSelected && (
+                                    <div className="text-blue-400 text-xs">✓</div>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500 mt-1">
                       {sortedModels.length} of {availableModels.length} models shown
+                      {filterProvider || maxPrice || minContext ? ' (filtered)' : ''}
                     </p>
                   </>
                 ) : (

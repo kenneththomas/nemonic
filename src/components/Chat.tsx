@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { Send, Loader2, Coins, Zap } from 'lucide-react';
 import { Message } from '../types';
-import { chatWithOpenRouter, OpenRouterMessage } from '../services/openrouter';
-import { loadAPIKey, loadModel, saveMessages, loadMessages, loadDocuments, loadMemories, loadSystemPrompt } from '../services/storage';
+import { chatWithOpenRouter, OpenRouterMessage, ModelInfo } from '../services/openrouter';
+import { loadAPIKey, loadModel, saveMessages, loadMessages, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage } from '../services/storage';
 import { retrieveRelevantChunks } from '../services/rag';
 
 interface ChatProps {
@@ -15,6 +15,9 @@ export default function Chat({ selectedMemories, selectedDocuments, model }: Cha
   const [messages, setMessages] = useState<Message[]>(loadMessages());
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [currentSessionTokens, setCurrentSessionTokens] = useState(0);
+  const [currentSessionCost, setCurrentSessionCost] = useState(0);
+  const [modelPricing, setModelPricing] = useState<{ prompt: number; completion: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -24,6 +27,70 @@ export default function Chat({ selectedMemories, selectedDocuments, model }: Cha
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Calculate cost helper function
+  const calculateCost = useCallback((promptTokens: number, completionTokens: number, pricing?: { prompt: number; completion: number }) => {
+    const pricingToUse = pricing || modelPricing;
+    if (!pricingToUse) return 0;
+    const promptCost = (promptTokens / 1000000) * pricingToUse.prompt;
+    const completionCost = (completionTokens / 1000000) * pricingToUse.completion;
+    return promptCost + completionCost;
+  }, [modelPricing]);
+
+  // Load model pricing when model changes
+  useEffect(() => {
+    const loadPricing = async () => {
+      try {
+        const apiKey = loadAPIKey();
+        if (!apiKey) return;
+        
+        const models = await import('../services/openrouter').then(m => m.getModels(apiKey));
+        const currentModel = models.find(m => m.id === model);
+        
+        if (currentModel?.pricing) {
+          setModelPricing({
+            prompt: parseFloat(currentModel.pricing.prompt || '0'),
+            completion: parseFloat(currentModel.pricing.completion || '0'),
+          });
+        } else {
+          setModelPricing(null);
+        }
+      } catch (error) {
+        console.error('Error loading model pricing:', error);
+        setModelPricing(null);
+      }
+    };
+    
+    loadPricing();
+  }, [model]);
+
+  // Calculate overall stats
+  const overallStats = useMemo(() => {
+    const usage = loadModelUsage();
+    let totalTokens = 0;
+    let totalCost = 0;
+    
+    usage.forEach(u => {
+      totalTokens += u.totalTokens;
+      // Calculate cost using stored pricing if available, otherwise use current model pricing
+      const promptTokens = u.totalPromptTokens || 0;
+      const completionTokens = u.totalCompletionTokens || 0;
+      
+      if (u.pricing && promptTokens > 0 && completionTokens > 0) {
+        totalCost += calculateCost(promptTokens, completionTokens, u.pricing);
+      } else if (modelPricing && promptTokens > 0 && completionTokens > 0) {
+        // Fallback to current model pricing if stored pricing not available
+        totalCost += calculateCost(promptTokens, completionTokens, modelPricing);
+      } else if (modelPricing) {
+        // Last resort: estimate using current model pricing (for old data without breakdown)
+        const estimatedCost = (u.totalTokens / 1000000) * 
+          ((modelPricing.prompt + modelPricing.completion) / 2);
+        totalCost += estimatedCost;
+      }
+    });
+    
+    return { totalTokens, totalCost };
+  }, [modelPricing, calculateCost]);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -114,6 +181,24 @@ export default function Chat({ selectedMemories, selectedDocuments, model }: Cha
         max_tokens: 2000,
       });
 
+      // Track model usage
+      const promptTokens = response.usage?.prompt_tokens || 0;
+      const completionTokens = response.usage?.completion_tokens || 0;
+      const totalTokens = response.usage?.total_tokens || 0;
+      
+      trackModelUsage(
+        model, 
+        totalTokens,
+        promptTokens,
+        completionTokens,
+        modelPricing || undefined
+      );
+      
+      // Update current session stats
+      setCurrentSessionTokens(prev => prev + totalTokens);
+      const cost = calculateCost(promptTokens, completionTokens);
+      setCurrentSessionCost(prev => prev + cost);
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -135,8 +220,48 @@ export default function Chat({ selectedMemories, selectedDocuments, model }: Cha
     }
   };
 
+  // Reset session stats when starting a new conversation (when messages are cleared)
+  useEffect(() => {
+    if (messages.length === 0) {
+      setCurrentSessionTokens(0);
+      setCurrentSessionCost(0);
+    }
+  }, [messages.length]);
+
   return (
     <div className="flex flex-col h-full">
+      {/* Stats Bar */}
+      <div className="border-b border-gray-700 bg-gray-900 px-4 py-2">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1 text-gray-400">
+              <Zap size={14} />
+              <span>Session:</span>
+              <span className="text-white font-medium">{currentSessionTokens.toLocaleString()} tokens</span>
+              {currentSessionCost > 0 && (
+                <>
+                  <span className="text-gray-500 mx-1">•</span>
+                  <Coins size={14} />
+                  <span className="text-white font-medium">${currentSessionCost.toFixed(4)}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-gray-400">
+            <Zap size={14} />
+            <span>Total:</span>
+            <span className="text-white font-medium">{overallStats.totalTokens.toLocaleString()} tokens</span>
+            {overallStats.totalCost > 0 && (
+              <>
+                <span className="text-gray-500 mx-1">•</span>
+                <Coins size={14} />
+                <span className="text-white font-medium">${overallStats.totalCost.toFixed(4)}</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center text-gray-500 mt-8">
