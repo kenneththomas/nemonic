@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Loader2, Coins, Zap, MoreVertical, Trash2, RotateCw, RefreshCw } from 'lucide-react';
+import { Send, Loader2, Coins, Zap, MoreVertical, Trash2, RotateCw, RefreshCw, Edit, Check, X, Square } from 'lucide-react';
 import { Message } from '../types';
 import { chatWithOpenRouterStream, getModels, OpenRouterMessage } from '../services/openrouter';
 import { loadAPIKey, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage, loadLLMSettings, incrementMemoryUseCount } from '../services/storage';
@@ -37,9 +37,14 @@ export default function Chat({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [rerunWithModelMessageId, setRerunWithModelMessageId] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const streamIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamBufferRef = useRef<{ buffer: string; displayed: string; messageId: string; updateFn: (content: string) => void } | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -203,46 +208,66 @@ export default function Chat({
       }
 
       const STREAM_WORD_DELAY_MS = 45;
-      let streamBuffer = '';
-      let displayedContent = '';
-      let streamInterval: ReturnType<typeof setInterval> | null = null;
 
       const updateMessageContent = (content: string) => {
         onMessagesChange((prev) =>
           prev.map((msg) => (msg.id === assistantMessageId ? { ...msg, content } : msg))
         );
       };
+      
       const clearStreamInterval = () => {
-        if (streamInterval != null) {
-          clearInterval(streamInterval);
-          streamInterval = null;
+        if (streamIntervalRef.current != null) {
+          clearInterval(streamIntervalRef.current);
+          streamIntervalRef.current = null;
         }
       };
 
-      streamInterval = setInterval(() => {
-        const match = streamBuffer.match(/^(\s*\S+\s)/);
+      // Store stream state in refs for stop handler access
+      streamBufferRef.current = {
+        buffer: '',
+        displayed: '',
+        messageId: assistantMessageId,
+        updateFn: updateMessageContent,
+      };
+
+      streamIntervalRef.current = setInterval(() => {
+        if (!streamBufferRef.current) return;
+        const match = streamBufferRef.current.buffer.match(/^(\s*\S+\s)/);
         if (!match) return;
         const word = match[1];
-        streamBuffer = streamBuffer.slice(word.length);
-        displayedContent += word;
-        updateMessageContent(displayedContent);
+        streamBufferRef.current.buffer = streamBufferRef.current.buffer.slice(word.length);
+        streamBufferRef.current.displayed += word;
+        streamBufferRef.current.updateFn(streamBufferRef.current.displayed);
       }, STREAM_WORD_DELAY_MS);
 
       const { online_search: _online, max_messages: _maxMsgs, ...apiLlmSettings } = llmSettings;
+      
+      // Create abort controller for this request
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+      
       try {
         await chatWithOpenRouterStream(
           apiKey,
           { model: effectiveModel, messages: allMessages, ...apiLlmSettings },
           {
-            onChunk: (c) => { streamBuffer += c; },
+            onChunk: (c) => { 
+              if (streamBufferRef.current) {
+                streamBufferRef.current.buffer += c;
+              }
+            },
             onComplete: (usage) => {
               clearStreamInterval();
-              if (streamBuffer.length > 0) {
-                displayedContent += streamBuffer;
-                updateMessageContent(displayedContent);
-                streamBuffer = '';
+              if (streamBufferRef.current) {
+                if (streamBufferRef.current.buffer.length > 0) {
+                  streamBufferRef.current.displayed += streamBufferRef.current.buffer;
+                  streamBufferRef.current.updateFn(streamBufferRef.current.displayed);
+                  streamBufferRef.current.buffer = '';
+                }
+                streamBufferRef.current = null;
               }
               setStreamingMessageId(null);
+              abortControllerRef.current = null;
               const promptTokens = usage.prompt_tokens || 0;
               const completionTokens = usage.completion_tokens || 0;
               const totalTokens = usage.total_tokens || 0;
@@ -262,19 +287,31 @@ export default function Chat({
             },
             onError: (error) => {
               clearStreamInterval();
+              if (streamBufferRef.current) {
+                streamBufferRef.current = null;
+              }
               setStreamingMessageId(null);
-              onMessagesChange((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: `Error: ${error.message || 'Failed to get response'}` }
-                    : msg
-                )
-              );
+              abortControllerRef.current = null;
+              // Don't show error if it was aborted
+              if (error.name !== 'AbortError') {
+                onMessagesChange((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: `Error: ${error.message || 'Failed to get response'}` }
+                      : msg
+                  )
+                );
+              }
             },
-          }
+          },
+          abortController.signal
         );
       } finally {
         clearStreamInterval();
+        if (streamBufferRef.current) {
+          streamBufferRef.current = null;
+        }
+        abortControllerRef.current = null;
       }
     },
     [
@@ -443,6 +480,57 @@ export default function Chat({
     [onMessagesChange]
   );
 
+  const handleStartEdit = useCallback((messageId: string) => {
+    const message = messages.find((m) => m.id === messageId);
+    if (message) {
+      setEditingMessageId(messageId);
+      setEditContent(message.content);
+      setOpenMenuId(null);
+    }
+  }, [messages]);
+
+  const handleSaveEdit = useCallback(() => {
+    if (editingMessageId) {
+      onMessagesChange((prev) =>
+        prev.map((msg) =>
+          msg.id === editingMessageId ? { ...msg, content: editContent } : msg
+        )
+      );
+      setEditingMessageId(null);
+      setEditContent('');
+    }
+  }, [editingMessageId, editContent, onMessagesChange]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessageId(null);
+    setEditContent('');
+  }, []);
+
+  const handleStop = useCallback(() => {
+    if (abortControllerRef.current) {
+      // Clear the stream interval
+      if (streamIntervalRef.current) {
+        clearInterval(streamIntervalRef.current);
+        streamIntervalRef.current = null;
+      }
+      
+      // Finalize any remaining buffer content
+      if (streamBufferRef.current) {
+        if (streamBufferRef.current.buffer.length > 0) {
+          streamBufferRef.current.displayed += streamBufferRef.current.buffer;
+          streamBufferRef.current.updateFn(streamBufferRef.current.displayed);
+        }
+        streamBufferRef.current = null;
+      }
+      
+      // Abort the fetch request
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setStreamingMessageId(null);
+      setIsLoading(false);
+    }
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
       {/* Stats Bar */}
@@ -501,55 +589,111 @@ export default function Chat({
             className={`group flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div className="relative max-w-[80%]">
-              <div
-                className={`rounded-lg p-3 pr-10 ${
-                  streamingMessageId === message.id ? 'streaming-bubble' : ''
-                }`}
-                style={{
-                  backgroundColor: message.role === 'user' ? 'var(--theme-user-bubble)' : 'var(--theme-assistant-bubble)',
-                  color: message.role === 'user' ? '#fff' : 'var(--theme-assistant-bubble-text)',
-                }}
-              >
-                {streamingMessageId === message.id && message.role === 'assistant' ? (
-                  <div className="whitespace-pre-wrap streaming-text">
-                    {message.content.split(/(\s+)/).map((part, idx) => {
-                      // Preserve whitespace exactly as is
-                      if (/^\s+$/.test(part)) {
-                        return <span key={idx}>{part}</span>;
-                      }
-                      // Animate words with a slight delay based on position for cascading effect
-                      const wordIndex = Math.floor(idx / 2); // Account for whitespace parts
-                      return (
-                        <span 
-                          key={idx} 
-                          className="streaming-word"
-                          style={{
-                            animationDelay: `${Math.min(wordIndex * 0.02, 0.25)}s`
-                          }}
-                        >
-                          {part}
-                        </span>
-                      );
-                    })}
-                  </div>
-                ) : message.role === 'assistant' ? (
-                  <div className="chat-markdown">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content || ''}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <div className="whitespace-pre-wrap">{message.content}</div>
-                )}
-              </div>
-              <div className="absolute top-2 right-2 flex items-center gap-0.5">
-                <button
-                  onClick={() => setOpenMenuId((id) => (id === message.id ? null : message.id))}
-                  className="p-1.5 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity hover:opacity-100 hover:bg-[var(--theme-bg-panel-hover)]"
-                  style={{ color: 'var(--theme-text-muted)' }}
-                  title="Message options"
-                  aria-expanded={openMenuId === message.id}
+              {editingMessageId === message.id ? (
+                <div
+                  className="rounded-lg p-3"
+                  style={{
+                    backgroundColor: message.role === 'user' ? 'var(--theme-user-bubble)' : 'var(--theme-assistant-bubble)',
+                    color: message.role === 'user' ? '#fff' : 'var(--theme-assistant-bubble-text)',
+                  }}
                 >
-                  <MoreVertical size={18} />
-                </button>
+                  <textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        handleSaveEdit();
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        handleCancelEdit();
+                      }
+                    }}
+                    className="w-full min-h-[60px] p-2 rounded resize-none focus:outline-none focus:ring-2 focus:ring-opacity-50"
+                    style={{
+                      backgroundColor: message.role === 'user' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                      color: message.role === 'user' ? '#fff' : 'var(--theme-assistant-bubble-text)',
+                      borderColor: message.role === 'user' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)',
+                    }}
+                    autoFocus
+                  />
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      onClick={handleSaveEdit}
+                      className="px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors hover:opacity-90"
+                      style={{
+                        backgroundColor: message.role === 'user' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
+                        color: message.role === 'user' ? '#fff' : 'var(--theme-assistant-bubble-text)',
+                      }}
+                    >
+                      <Check size={14} />
+                      Save (Ctrl+Enter)
+                    </button>
+                    <button
+                      onClick={handleCancelEdit}
+                      className="px-3 py-1.5 rounded text-sm flex items-center gap-1.5 transition-colors hover:opacity-90"
+                      style={{
+                        backgroundColor: message.role === 'user' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
+                        color: message.role === 'user' ? '#fff' : 'var(--theme-assistant-bubble-text)',
+                      }}
+                    >
+                      <X size={14} />
+                      Cancel (Esc)
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className={`rounded-lg p-3 pr-10 ${
+                    streamingMessageId === message.id ? 'streaming-bubble' : ''
+                  }`}
+                  style={{
+                    backgroundColor: message.role === 'user' ? 'var(--theme-user-bubble)' : 'var(--theme-assistant-bubble)',
+                    color: message.role === 'user' ? '#fff' : 'var(--theme-assistant-bubble-text)',
+                  }}
+                >
+                  {streamingMessageId === message.id && message.role === 'assistant' ? (
+                    <div className="whitespace-pre-wrap streaming-text">
+                      {message.content.split(/(\s+)/).map((part, idx) => {
+                        // Preserve whitespace exactly as is
+                        if (/^\s+$/.test(part)) {
+                          return <span key={idx}>{part}</span>;
+                        }
+                        // Animate words with a slight delay based on position for cascading effect
+                        const wordIndex = Math.floor(idx / 2); // Account for whitespace parts
+                        return (
+                          <span 
+                            key={idx} 
+                            className="streaming-word"
+                            style={{
+                              animationDelay: `${Math.min(wordIndex * 0.02, 0.25)}s`
+                            }}
+                          >
+                            {part}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : message.role === 'assistant' ? (
+                    <div className="chat-markdown">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content || ''}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap">{message.content}</div>
+                  )}
+                </div>
+              )}
+              {editingMessageId !== message.id && (
+                <div className="absolute top-2 right-2 flex items-center gap-0.5">
+                  <button
+                    onClick={() => setOpenMenuId((id) => (id === message.id ? null : message.id))}
+                    className="p-1.5 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity hover:opacity-100 hover:bg-[var(--theme-bg-panel-hover)]"
+                    style={{ color: 'var(--theme-text-muted)' }}
+                    title="Message options"
+                    aria-expanded={openMenuId === message.id}
+                  >
+                    <MoreVertical size={18} />
+                  </button>
                 {openMenuId === message.id && (
                   <div
                     className="absolute right-0 top-full mt-1 py-1 w-56 rounded-lg shadow-xl z-10 origin-top-right border"
@@ -586,10 +730,19 @@ export default function Chat({
                       </>
                     )}
                     <button
-                      onClick={() => handleDeleteMessage(message.id)}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--theme-bg-panel-hover)] ${
+                      onClick={() => handleStartEdit(message.id)}
+                      disabled={streamingMessageId === message.id}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--theme-bg-panel-hover)] disabled:opacity-50 disabled:cursor-not-allowed ${
                         message.role === 'user' ? '' : 'rounded-t-lg'
                       }`}
+                      style={{ color: 'var(--theme-text)' }}
+                    >
+                      <Edit size={16} />
+                      Edit message
+                    </button>
+                    <button
+                      onClick={() => handleDeleteMessage(message.id)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--theme-bg-panel-hover)]"
                       style={{ color: 'var(--theme-text)' }}
                     >
                       <Trash2 size={16} />
@@ -605,7 +758,8 @@ export default function Chat({
                     </button>
                   </div>
                 )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -646,18 +800,33 @@ export default function Chat({
             }}
             disabled={isLoading}
           />
-          <button
-            onClick={handleSend}
-            disabled={isLoading || !input.trim()}
-            className="text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
-            style={{ backgroundColor: 'var(--theme-accent)' }}
-            onMouseDown={(e) => {
+          {streamingMessageId ? (
+            <button
+              onClick={handleStop}
+              className="text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors hover:opacity-90"
+              style={{ backgroundColor: '#ef4444' }}
+              onMouseDown={(e) => {
               // Prevent button from taking focus away from textarea
               e.preventDefault();
             }}
-          >
-            <Send size={20} />
-          </button>
+            >
+              <Square size={20} />
+              Stop
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={isLoading || !input.trim()}
+              className="text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
+              style={{ backgroundColor: 'var(--theme-accent)' }}
+              onMouseDown={(e) => {
+              // Prevent button from taking focus away from textarea
+              e.preventDefault();
+            }}
+            >
+              <Send size={20} />
+            </button>
+          )}
         </div>
       </div>
 

@@ -80,7 +80,8 @@ export interface StreamCallbacks {
 export async function chatWithOpenRouterStream(
   apiKey: string,
   request: OpenRouterRequest,
-  callbacks: StreamCallbacks
+  callbacks: StreamCallbacks,
+  abortSignal?: AbortSignal
 ): Promise<void> {
   const response = await fetch(OPENROUTER_API_URL, {
     method: 'POST',
@@ -91,6 +92,7 @@ export async function chatWithOpenRouterStream(
       'X-Title': 'nemonic',
     },
     body: JSON.stringify({ ...request, stream: true }),
+    signal: abortSignal,
   });
 
   if (!response.ok) {
@@ -191,6 +193,10 @@ export async function chatWithOpenRouterStream(
       callbacks.onComplete({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
     }
   } catch (error) {
+    // If aborted, don't treat it as an error
+    if (error instanceof Error && error.name === 'AbortError') {
+      return;
+    }
     const err = error instanceof Error ? error : new Error('Unknown streaming error');
     callbacks.onError?.(err);
     throw err;
