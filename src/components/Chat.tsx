@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Loader2, Coins, Zap, MoreVertical, Trash2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Send, Loader2, Coins, Zap, MoreVertical, Trash2, RotateCw, RefreshCw } from 'lucide-react';
 import { Message } from '../types';
-import { chatWithOpenRouterStream, OpenRouterMessage } from '../services/openrouter';
+import { chatWithOpenRouterStream, getModels, OpenRouterMessage } from '../services/openrouter';
 import { loadAPIKey, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage, loadLLMSettings, incrementMemoryUseCount } from '../services/storage';
 import { retrieveRelevantChunks } from '../services/rag';
+import ModelPickerModal from './ModelPickerModal';
 
 interface ChatProps {
   conversationId: string | null;
@@ -33,6 +36,7 @@ export default function Chat({
   const [modelPricing, setModelPricing] = useState<{ prompt: number; completion: number } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [rerunWithModelMessageId, setRerunWithModelMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -116,60 +120,22 @@ export default function Chat({
     return { totalTokens, totalCost };
   }, [calculateCost]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input,
-      timestamp: Date.now(),
-    };
-
-    onMessagesChange((prev) => [...prev, userMessage]);
-    if (selectedMemories.length > 0) {
-      incrementMemoryUseCount(selectedMemories);
-      onMemoriesUsed?.();
-    }
-    setInput('');
-    onInputChange?.('');
-    setIsLoading(true);
-    
-    // Keep focus on textarea after sending
-    setTimeout(() => {
-      inputRef.current?.focus();
-    }, 0);
-
-    // Create assistant message placeholder for streaming (outside try block for error handling)
-    const assistantMessageId = (Date.now() + 1).toString();
-    const assistantMessage: Message = {
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-    };
-
-    let clearStreamInterval: () => void = () => {};
-
-    try {
+  const executeCompletion = useCallback(
+    async (
+      userContent: string,
+      historyMessages: Message[],
+      modelToUse: string,
+      assistantMessageId: string,
+      isRerun: boolean
+    ) => {
       const apiKey = loadAPIKey();
-      if (!apiKey) {
-        throw new Error('API key not set. Please configure it in settings.');
-      }
+      if (!apiKey) throw new Error('API key not set. Please configure it in settings.');
 
-      // Build context from selected memories and documents
       let contextMessages: OpenRouterMessage[] = [];
-
-      // Add custom system prompt if set
       const systemPrompt = loadSystemPrompt();
       if (systemPrompt.trim()) {
-        contextMessages.push({
-          role: 'system',
-          content: systemPrompt,
-        });
+        contextMessages.push({ role: 'system', content: systemPrompt });
       }
-
-      // Add selected memories
       if (selectedMemories.length > 0) {
         const memories = loadMemories();
         const selectedMemoryTexts = memories
@@ -183,20 +149,16 @@ export default function Chat({
           });
         }
       }
-
-      // Add RAG context from selected documents
       if (selectedDocuments.length > 0) {
         const allDocuments = loadDocuments();
-        const selectedDocs = allDocuments.filter(d => 
+        const selectedDocs = allDocuments.filter(d =>
           selectedDocuments.includes(d.metadata.fileName)
         );
-        
         if (selectedDocs.length > 0) {
-          const relevantChunks = await retrieveRelevantChunks(input, selectedDocs, 5);
+          const relevantChunks = await retrieveRelevantChunks(userContent, selectedDocs, 5);
           const ragContext = relevantChunks
             .map(chunk => `[From ${chunk.metadata.fileName}]: ${chunk.content}`)
             .join('\n\n');
-          
           if (ragContext) {
             contextMessages.push({
               role: 'system',
@@ -206,39 +168,43 @@ export default function Chat({
         }
       }
 
-      // Add conversation history
-      const conversationMessages: OpenRouterMessage[] = messages
-        .slice(-10) // Last 10 messages for context
-        .map(m => ({
-          role: m.role,
-          content: m.content,
-        }));
+      const conversationMessages: OpenRouterMessage[] = historyMessages
+        .slice(-10)
+        .map(m => ({ role: m.role, content: m.content }));
+      const allMessages = isRerun
+        ? [...contextMessages, ...conversationMessages]
+        : [...contextMessages, ...conversationMessages, { role: 'user' as const, content: userContent }];
 
-      const allMessages = [...contextMessages, ...conversationMessages, {
-        role: 'user' as const,
-        content: input,
-      }];
+      let pricingToUse: { prompt: number; completion: number } | null = null;
+      if (modelToUse === model) {
+        pricingToUse = modelPricing;
+      } else {
+        try {
+          const models = await getModels(apiKey);
+          const m = models.find((x: { id: string }) => x.id === modelToUse);
+          if (m?.pricing) {
+            pricingToUse = {
+              prompt: parseFloat(m.pricing.prompt || '0'),
+              completion: parseFloat(m.pricing.completion || '0'),
+            };
+          }
+        } catch {
+          /* ignore */
+        }
+      }
 
       const llmSettings = loadLLMSettings();
-      
-      onMessagesChange((prev) => [...prev, assistantMessage]);
-      setStreamingMessageId(assistantMessageId);
-
-      // Throttled streaming: buffer chunks, drip word-by-word at readable pace, flush remainder on done
       const STREAM_WORD_DELAY_MS = 45;
       let streamBuffer = '';
-      let displayedContent = ''; // track ourselves; don't rely on state (avoids batching overwrites)
+      let displayedContent = '';
       let streamInterval: ReturnType<typeof setInterval> | null = null;
 
       const updateMessageContent = (content: string) => {
         onMessagesChange((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId ? { ...msg, content } : msg
-          )
+          prev.map((msg) => (msg.id === assistantMessageId ? { ...msg, content } : msg))
         );
       };
-
-      clearStreamInterval = () => {
+      const clearStreamInterval = () => {
         if (streamInterval != null) {
           clearInterval(streamInterval);
           streamInterval = null;
@@ -246,7 +212,6 @@ export default function Chat({
       };
 
       streamInterval = setInterval(() => {
-        // Take next word (including leading whitespace) only when followed by space/newline
         const match = streamBuffer.match(/^(\s*\S+\s)/);
         if (!match) return;
         const word = match[1];
@@ -255,98 +220,181 @@ export default function Chat({
         updateMessageContent(displayedContent);
       }, STREAM_WORD_DELAY_MS);
 
-      // Use streaming API
-      await chatWithOpenRouterStream(
-        apiKey,
-        {
-          model,
-          messages: allMessages,
-          ...llmSettings,
-        },
-        {
-          onChunk: (content) => {
-            streamBuffer += content;
-          },
-          onComplete: (usage) => {
-            clearStreamInterval();
-            if (streamBuffer.length > 0) {
-              displayedContent += streamBuffer;
-              updateMessageContent(displayedContent);
-              streamBuffer = '';
-            }
-            console.log('onComplete called with usage:', usage);
-            setStreamingMessageId(null);
-            
-            // Track model usage
-            const promptTokens = usage.prompt_tokens || 0;
-            const completionTokens = usage.completion_tokens || 0;
-            const totalTokens = usage.total_tokens || 0;
-            
-            console.log('Token counts:', { promptTokens, completionTokens, totalTokens });
-            
-            // Ensure we have pricing before tracking (it should be loaded by now)
-            const pricingToStore = modelPricing || undefined;
-            
-            trackModelUsage(
-              model, 
-              totalTokens,
-              promptTokens,
-              completionTokens,
-              pricingToStore
-            );
-            
-            // Update current session stats
-            setCurrentSessionTokens(prev => {
-              const newTotal = prev + totalTokens;
-              console.log('Updating session tokens:', prev, '+', totalTokens, '=', newTotal);
-              return newTotal;
-            });
-            // Calculate cost using the pricing we're storing (or current modelPricing)
-            const cost = pricingToStore 
-              ? calculateCost(promptTokens, completionTokens, pricingToStore)
-              : 0;
-            setCurrentSessionCost(prev => prev + cost);
-          },
-          onError: (error) => {
-            clearStreamInterval();
-            setStreamingMessageId(null);
-            // Update message with error
-            onMessagesChange((prev) =>
-              prev.map((msg) =>
-                msg.id === assistantMessageId
-                  ? { ...msg, content: `Error: ${error.message || 'Failed to get response'}` }
-                  : msg
-              )
-            );
-          },
-        }
-      );
-    } catch (error: any) {
-      clearStreamInterval();
+      try {
+        await chatWithOpenRouterStream(
+          apiKey,
+          { model: modelToUse, messages: allMessages, ...llmSettings },
+          {
+            onChunk: (c) => { streamBuffer += c; },
+            onComplete: (usage) => {
+              clearStreamInterval();
+              if (streamBuffer.length > 0) {
+                displayedContent += streamBuffer;
+                updateMessageContent(displayedContent);
+                streamBuffer = '';
+              }
+              setStreamingMessageId(null);
+              const promptTokens = usage.prompt_tokens || 0;
+              const completionTokens = usage.completion_tokens || 0;
+              const totalTokens = usage.total_tokens || 0;
+              const pricingToStore = pricingToUse ?? undefined;
+              trackModelUsage(
+                modelToUse,
+                totalTokens,
+                promptTokens,
+                completionTokens,
+                pricingToStore
+              );
+              setCurrentSessionTokens((prev) => prev + totalTokens);
+              const cost = pricingToStore
+                ? calculateCost(promptTokens, completionTokens, pricingToStore)
+                : 0;
+              setCurrentSessionCost((prev) => prev + cost);
+            },
+            onError: (error) => {
+              clearStreamInterval();
+              setStreamingMessageId(null);
+              onMessagesChange((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: `Error: ${error.message || 'Failed to get response'}` }
+                    : msg
+                )
+              );
+            },
+          }
+        );
+      } finally {
+        clearStreamInterval();
+      }
+    },
+    [
+      model,
+      modelPricing,
+      selectedMemories,
+      selectedDocuments,
+      calculateCost,
+      onMessagesChange,
+    ]
+  );
+
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input,
+      timestamp: Date.now(),
+    };
+    onMessagesChange((prev) => [...prev, userMessage]);
+    if (selectedMemories.length > 0) {
+      incrementMemoryUseCount(selectedMemories);
+      onMemoriesUsed?.();
+    }
+    setInput('');
+    onInputChange?.('');
+    setIsLoading(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+    };
+    onMessagesChange((prev) => [...prev, assistantMessage]);
+    setStreamingMessageId(assistantMessageId);
+
+    try {
+      await executeCompletion(input, messages, model, assistantMessageId, false);
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error('Unknown error');
       setStreamingMessageId(null);
-      // If we have a streaming message, update it with error, otherwise create new error message
       onMessagesChange((prev) => {
-        const hasStreamingMessage = prev.some(m => m.id === assistantMessageId);
-        if (hasStreamingMessage) {
+        const has = prev.some((m) => m.id === assistantMessageId);
+        if (has) {
           return prev.map((msg) =>
             msg.id === assistantMessageId
-              ? { ...msg, content: `Error: ${error.message || 'Failed to get response'}` }
+              ? { ...msg, content: `Error: ${err.message}` }
               : msg
           );
-        } else {
-          const errorMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            content: `Error: ${error.message || 'Failed to get response'}`,
-            timestamp: Date.now(),
-          };
-          return [...prev, errorMessage];
         }
+        return [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant' as const,
+            content: `Error: ${err.message}`,
+            timestamp: Date.now(),
+          },
+        ];
       });
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleRerun = useCallback(
+    async (messageId: string, modelOverride?: string) => {
+      if (isLoading) return;
+      const idx = messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return;
+      const msg = messages[idx];
+      if (msg.role !== 'user') return;
+
+      setOpenMenuId(null);
+      setRerunWithModelMessageId(null);
+
+      const trimmed = messages.slice(0, idx + 1);
+      const assistantMessageId = (Date.now() + 1).toString();
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+      };
+      onMessagesChange(() => [...trimmed, assistantMessage]);
+      setStreamingMessageId(assistantMessageId);
+      setIsLoading(true);
+
+      try {
+        await executeCompletion(
+          msg.content,
+          trimmed,
+          modelOverride ?? model,
+          assistantMessageId,
+          true
+        );
+      } catch (error: unknown) {
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        setStreamingMessageId(null);
+        onMessagesChange((prev) => {
+          const has = prev.some((m) => m.id === assistantMessageId);
+          if (has) {
+            return prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, content: `Error: ${err.message}` }
+                : m
+            );
+          }
+          return [
+            ...prev,
+            {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant' as const,
+              content: `Error: ${err.message}`,
+              timestamp: Date.now(),
+            },
+          ];
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [messages, model, isLoading, executeCompletion, onMessagesChange]
+  );
 
   // Reset session stats when switching conversations
   useEffect(() => {
@@ -475,6 +523,10 @@ export default function Chat({
                       );
                     })}
                   </div>
+                ) : message.role === 'assistant' ? (
+                  <div className="chat-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content || ''}</ReactMarkdown>
+                  </div>
                 ) : (
                   <div className="whitespace-pre-wrap">{message.content}</div>
                 )}
@@ -497,9 +549,38 @@ export default function Chat({
                       borderColor: 'var(--theme-border)',
                     }}
                   >
+                    {message.role === 'user' && (
+                      <>
+                        <button
+                          onClick={() => handleRerun(message.id)}
+                          disabled={isLoading}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-t-lg transition-colors hover:bg-[var(--theme-bg-panel-hover)] disabled:opacity-50"
+                          style={{ color: 'var(--theme-text)' }}
+                          title="Resend this message with the same model"
+                        >
+                          <RotateCw size={16} />
+                          Rerun (same model)
+                        </button>
+                        <button
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            setRerunWithModelMessageId(message.id);
+                          }}
+                          disabled={isLoading}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--theme-bg-panel-hover)] disabled:opacity-50"
+                          style={{ color: 'var(--theme-text)' }}
+                          title="Resend this message with a different model"
+                        >
+                          <RefreshCw size={16} />
+                          Rerun with different model
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={() => handleDeleteMessage(message.id)}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-t-lg transition-colors hover:bg-[var(--theme-bg-panel-hover)]"
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--theme-bg-panel-hover)] ${
+                        message.role === 'user' ? '' : 'rounded-t-lg'
+                      }`}
                       style={{ color: 'var(--theme-text)' }}
                     >
                       <Trash2 size={16} />
@@ -570,6 +651,17 @@ export default function Chat({
           </button>
         </div>
       </div>
+
+      <ModelPickerModal
+        isOpen={rerunWithModelMessageId !== null}
+        onClose={() => setRerunWithModelMessageId(null)}
+        onSelect={(modelId: string) => {
+          if (rerunWithModelMessageId) handleRerun(rerunWithModelMessageId, modelId);
+        }}
+        currentModel={model}
+        title="Rerun with different model"
+        confirmLabel="Rerun"
+      />
     </div>
   );
 }
