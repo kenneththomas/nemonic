@@ -149,6 +149,8 @@ export default function Chat({
       timestamp: Date.now(),
     };
 
+    let clearStreamInterval: () => void = () => {};
+
     try {
       const apiKey = loadAPIKey();
       if (!apiKey) {
@@ -222,6 +224,37 @@ export default function Chat({
       onMessagesChange((prev) => [...prev, assistantMessage]);
       setStreamingMessageId(assistantMessageId);
 
+      // Throttled streaming: buffer chunks, drip word-by-word at readable pace, flush remainder on done
+      const STREAM_WORD_DELAY_MS = 45;
+      let streamBuffer = '';
+      let displayedContent = ''; // track ourselves; don't rely on state (avoids batching overwrites)
+      let streamInterval: ReturnType<typeof setInterval> | null = null;
+
+      const updateMessageContent = (content: string) => {
+        onMessagesChange((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId ? { ...msg, content } : msg
+          )
+        );
+      };
+
+      clearStreamInterval = () => {
+        if (streamInterval != null) {
+          clearInterval(streamInterval);
+          streamInterval = null;
+        }
+      };
+
+      streamInterval = setInterval(() => {
+        // Take next word (including leading whitespace) only when followed by space/newline
+        const match = streamBuffer.match(/^(\s*\S+\s)/);
+        if (!match) return;
+        const word = match[1];
+        streamBuffer = streamBuffer.slice(word.length);
+        displayedContent += word;
+        updateMessageContent(displayedContent);
+      }, STREAM_WORD_DELAY_MS);
+
       // Use streaming API
       await chatWithOpenRouterStream(
         apiKey,
@@ -232,16 +265,15 @@ export default function Chat({
         },
         {
           onChunk: (content) => {
-            // Update message content incrementally
-            onMessagesChange((prev) =>
-              prev.map((msg) =>
-                msg.id === assistantMessageId
-                  ? { ...msg, content: msg.content + content }
-                  : msg
-              )
-            );
+            streamBuffer += content;
           },
           onComplete: (usage) => {
+            clearStreamInterval();
+            if (streamBuffer.length > 0) {
+              displayedContent += streamBuffer;
+              updateMessageContent(displayedContent);
+              streamBuffer = '';
+            }
             console.log('onComplete called with usage:', usage);
             setStreamingMessageId(null);
             
@@ -276,6 +308,7 @@ export default function Chat({
             setCurrentSessionCost(prev => prev + cost);
           },
           onError: (error) => {
+            clearStreamInterval();
             setStreamingMessageId(null);
             // Update message with error
             onMessagesChange((prev) =>
@@ -289,6 +322,7 @@ export default function Chat({
         }
       );
     } catch (error: any) {
+      clearStreamInterval();
       setStreamingMessageId(null);
       // If we have a streaming message, update it with error, otherwise create new error message
       onMessagesChange((prev) => {
