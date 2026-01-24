@@ -445,13 +445,39 @@ export default function Chat({
           >
             <div className="relative max-w-[80%]">
               <div
-                className="rounded-lg p-3 pr-10"
+                className={`rounded-lg p-3 pr-10 ${
+                  streamingMessageId === message.id ? 'streaming-bubble' : ''
+                }`}
                 style={{
                   backgroundColor: message.role === 'user' ? 'var(--theme-user-bubble)' : 'var(--theme-assistant-bubble)',
                   color: message.role === 'user' ? '#fff' : 'var(--theme-assistant-bubble-text)',
                 }}
               >
-                <div className="whitespace-pre-wrap">{message.content}</div>
+                {streamingMessageId === message.id && message.role === 'assistant' ? (
+                  <div className="whitespace-pre-wrap streaming-text">
+                    {message.content.split(/(\s+)/).map((part, idx) => {
+                      // Preserve whitespace exactly as is
+                      if (/^\s+$/.test(part)) {
+                        return <span key={idx}>{part}</span>;
+                      }
+                      // Animate words with a slight delay based on position for cascading effect
+                      const wordIndex = Math.floor(idx / 2); // Account for whitespace parts
+                      return (
+                        <span 
+                          key={idx} 
+                          className="streaming-word"
+                          style={{
+                            animationDelay: `${Math.min(wordIndex * 0.02, 0.25)}s`
+                          }}
+                        >
+                          {part}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap">{message.content}</div>
+                )}
               </div>
               <div className="absolute top-2 right-2 flex items-center gap-0.5">
                 <button

@@ -140,3 +140,55 @@ textarea::placeholder {
   width: 0;
   height: 0;
 }
+
+/* Streaming text animations */
+@keyframes typing-cursor {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.3; }
+}
+
+@keyframes word-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes stream-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(37, 99, 235, 0);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(37, 99, 235, 0.2), 0 0 5px rgba(37, 99, 235, 0.1);
+  }
+}
+
+.streaming-text {
+  position: relative;
+}
+
+.streaming-text::after {
+  content: '▊';
+  display: inline-block;
+  margin-left: 2px;
+  animation: typing-cursor 1s infinite;
+  color: currentColor;
+  opacity: 0.85;
+  font-weight: 300;
+  vertical-align: baseline;
+  line-height: 1;
+}
+
+.streaming-word {
+  display: inline-block;
+  animation: word-fade-in 0.35s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+
+.streaming-bubble {
+  animation: stream-glow 2.5s ease-in-out infinite;
+  transition: box-shadow 0.3s ease;
+}
