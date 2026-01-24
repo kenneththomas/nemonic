@@ -1,28 +1,33 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Send, Loader2, Coins, Zap } from 'lucide-react';
 import { Message } from '../types';
-import { chatWithOpenRouter, OpenRouterMessage, ModelInfo } from '../services/openrouter';
-import { loadAPIKey, loadModel, saveMessages, loadMessages, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage } from '../services/storage';
+import { chatWithOpenRouter, OpenRouterMessage } from '../services/openrouter';
+import { loadAPIKey, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage } from '../services/storage';
 import { retrieveRelevantChunks } from '../services/rag';
 
 interface ChatProps {
+  conversationId: string | null;
+  messages: Message[];
+  onMessagesChange: (next: Message[] | ((prev: Message[]) => Message[])) => void;
   selectedMemories: string[];
   selectedDocuments: string[];
   model: string;
 }
 
-export default function Chat({ selectedMemories, selectedDocuments, model }: ChatProps) {
-  const [messages, setMessages] = useState<Message[]>(loadMessages());
+export default function Chat({
+  conversationId,
+  messages,
+  onMessagesChange,
+  selectedMemories,
+  selectedDocuments,
+  model,
+}: ChatProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentSessionTokens, setCurrentSessionTokens] = useState(0);
   const [currentSessionCost, setCurrentSessionCost] = useState(0);
   const [modelPricing, setModelPricing] = useState<{ prompt: number; completion: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    saveMessages(messages);
-  }, [messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -102,7 +107,7 @@ export default function Chat({ selectedMemories, selectedDocuments, model }: Cha
       timestamp: Date.now(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    onMessagesChange((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
@@ -206,7 +211,7 @@ export default function Chat({ selectedMemories, selectedDocuments, model }: Cha
         timestamp: Date.now(),
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
+      onMessagesChange((prev) => [...prev, assistantMessage]);
     } catch (error: any) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -214,19 +219,17 @@ export default function Chat({ selectedMemories, selectedDocuments, model }: Cha
         content: `Error: ${error.message || 'Failed to get response'}`,
         timestamp: Date.now(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      onMessagesChange((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Reset session stats when starting a new conversation (when messages are cleared)
+  // Reset session stats when switching conversations
   useEffect(() => {
-    if (messages.length === 0) {
-      setCurrentSessionTokens(0);
-      setCurrentSessionCost(0);
-    }
-  }, [messages.length]);
+    setCurrentSessionTokens(0);
+    setCurrentSessionCost(0);
+  }, [conversationId]);
 
   return (
     <div className="flex flex-col h-full">

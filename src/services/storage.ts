@@ -1,4 +1,4 @@
-import { Message, Memory, DocumentChunk } from '../types';
+import { Message, Memory, DocumentChunk, Conversation } from '../types';
 
 const STORAGE_KEYS = {
   MESSAGES: 'nemonic_messages',
@@ -10,6 +10,9 @@ const STORAGE_KEYS = {
   SELECTED_DOCUMENTS: 'nemonic_selected_documents',
   SYSTEM_PROMPT: 'nemonic_system_prompt',
   MODEL_USAGE: 'nemonic_model_usage',
+  CONVERSATIONS: 'nemonic_conversations',
+  ACTIVE_CONVERSATION_ID: 'nemonic_active_conversation_id',
+  CONVERSATION_MESSAGES: 'nemonic_conversation_messages',
 };
 
 export function saveMessages(messages: Message[]): void {
@@ -173,4 +176,109 @@ export function loadModelUsage(): ModelUsage[] {
 export function getModelUsage(modelId: string): ModelUsage | undefined {
   const usage = loadModelUsage();
   return usage.find(u => u.modelId === modelId);
+}
+
+// --- Conversation management ---
+
+export function loadConversations(): Conversation[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.CONVERSATIONS);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error loading conversations:', error);
+    return [];
+  }
+}
+
+export function saveConversations(conversations: Conversation[]): void {
+  localStorage.setItem(STORAGE_KEYS.CONVERSATIONS, JSON.stringify(conversations));
+}
+
+export function loadConversationMessages(): Record<string, Message[]> {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.CONVERSATION_MESSAGES);
+    return data ? JSON.parse(data) : {};
+  } catch (error) {
+    console.error('Error loading conversation messages:', error);
+    return {};
+  }
+}
+
+export function saveConversationMessages(messagesByConv: Record<string, Message[]>): void {
+  localStorage.setItem(STORAGE_KEYS.CONVERSATION_MESSAGES, JSON.stringify(messagesByConv));
+}
+
+export function loadMessagesForConversation(conversationId: string): Message[] {
+  const all = loadConversationMessages();
+  return all[conversationId] ?? [];
+}
+
+export function saveMessagesForConversation(conversationId: string, messages: Message[]): void {
+  const all = loadConversationMessages();
+  all[conversationId] = messages;
+  saveConversationMessages(all);
+}
+
+export function getActiveConversationId(): string | null {
+  return localStorage.getItem(STORAGE_KEYS.ACTIVE_CONVERSATION_ID);
+}
+
+export function setActiveConversationId(id: string | null): void {
+  if (id === null) {
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_CONVERSATION_ID);
+  } else {
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_CONVERSATION_ID, id);
+  }
+}
+
+export function createConversation(): Conversation {
+  const id = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const conv: Conversation = {
+    id,
+    title: 'New conversation',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  const list = loadConversations();
+  list.unshift(conv);
+  saveConversations(list);
+  setActiveConversationId(id);
+  return conv;
+}
+
+export function updateConversation(
+  id: string,
+  updates: Partial<Pick<Conversation, 'title' | 'updatedAt'>>
+): void {
+  const list = loadConversations();
+  const idx = list.findIndex(c => c.id === id);
+  if (idx === -1) return;
+  list[idx] = { ...list[idx], ...updates };
+  saveConversations(list);
+}
+
+export function deleteConversation(id: string): void {
+  const list = loadConversations().filter(c => c.id !== id);
+  saveConversations(list);
+  const all = loadConversationMessages();
+  delete all[id];
+  saveConversationMessages(all);
+  const active = getActiveConversationId();
+  if (active === id) {
+    setActiveConversationId(list[0]?.id ?? null);
+  }
+}
+
+/** Ensure at least one conversation exists; migrate legacy messages if present. Call once on app init. */
+export function ensureConversationsInitialized(): void {
+  const conversations = loadConversations();
+  if (conversations.length > 0) return;
+
+  const legacy = loadMessages();
+  const conv = createConversation();
+  if (legacy.length > 0) {
+    updateConversation(conv.id, { title: 'Migrated chat' });
+    saveMessagesForConversation(conv.id, legacy);
+    localStorage.removeItem(STORAGE_KEYS.MESSAGES);
+  }
 }

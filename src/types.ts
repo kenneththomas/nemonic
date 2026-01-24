@@ -5,6 +5,13 @@ export interface Message {
   timestamp: number;
 }
 
+export interface Conversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Memory {
   id: string;
   title: string;
