@@ -11,6 +11,7 @@ export interface OpenRouterRequest {
   top_p?: number;
   frequency_penalty?: number;
   presence_penalty?: number;
+  stream?: boolean;
 }
 
 export interface OpenRouterResponse {
@@ -23,6 +24,22 @@ export interface OpenRouterResponse {
     finish_reason: string;
   }>;
   usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+export interface OpenRouterStreamChunk {
+  id: string;
+  choices: Array<{
+    delta: {
+      role?: string;
+      content?: string;
+    };
+    finish_reason?: string;
+  }>;
+  usage?: {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
@@ -52,6 +69,127 @@ export async function chatWithOpenRouter(
   }
 
   return response.json();
+}
+
+export interface StreamCallbacks {
+  onChunk: (content: string) => void;
+  onComplete: (usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }) => void;
+  onError?: (error: Error) => void;
+}
+
+export async function chatWithOpenRouterStream(
+  apiKey: string,
+  request: OpenRouterRequest,
+  callbacks: StreamCallbacks
+): Promise<void> {
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': window.location.origin,
+      'X-Title': 'Nemonic Chat',
+    },
+    body: JSON.stringify({ ...request, stream: true }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    const errorObj = new Error(`OpenRouter API error: ${error}`);
+    callbacks.onError?.(errorObj);
+    throw errorObj;
+  }
+
+  if (!response.body) {
+    const error = new Error('Response body is null');
+    callbacks.onError?.(error);
+    throw error;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalUsage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null = null;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.trim() === '') continue;
+        
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          
+          if (data === '[DONE]') {
+            if (finalUsage) {
+              callbacks.onComplete(finalUsage);
+            }
+            return;
+          }
+
+          try {
+            const chunk: OpenRouterStreamChunk = JSON.parse(data);
+            
+            // Extract content delta
+            const contentDelta = chunk.choices[0]?.delta?.content;
+            if (contentDelta) {
+              callbacks.onChunk(contentDelta);
+            }
+
+            // Extract usage from final chunk
+            if (chunk.usage) {
+              finalUsage = chunk.usage;
+            }
+
+            // Check if stream is finished
+            if (chunk.choices[0]?.finish_reason) {
+              if (finalUsage) {
+                callbacks.onComplete(finalUsage);
+              }
+              return;
+            }
+          } catch (e) {
+            // Skip invalid JSON lines
+            console.warn('Failed to parse SSE chunk:', data, e);
+          }
+        }
+      }
+    }
+
+    // Handle any remaining buffer
+    if (buffer.trim() && buffer.startsWith('data: ')) {
+      const data = buffer.slice(6);
+      if (data !== '[DONE]') {
+        try {
+          const chunk: OpenRouterStreamChunk = JSON.parse(data);
+          if (chunk.usage) {
+            finalUsage = chunk.usage;
+          }
+        } catch (e) {
+          // Ignore parse errors for final buffer
+        }
+      }
+    }
+
+    if (finalUsage) {
+      callbacks.onComplete(finalUsage);
+    }
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error('Unknown streaming error');
+    callbacks.onError?.(err);
+    throw err;
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export interface ModelInfo {

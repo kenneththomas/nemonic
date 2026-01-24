@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Send, Loader2, Coins, Zap, MoreVertical, Trash2 } from 'lucide-react';
 import { Message } from '../types';
-import { chatWithOpenRouter, OpenRouterMessage } from '../services/openrouter';
+import { chatWithOpenRouterStream, OpenRouterMessage } from '../services/openrouter';
 import { loadAPIKey, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage, loadLLMSettings, incrementMemoryUseCount } from '../services/storage';
 import { retrieveRelevantChunks } from '../services/rag';
 
@@ -32,13 +32,14 @@ export default function Chat({
   const [currentSessionCost, setCurrentSessionCost] = useState(0);
   const [modelPricing, setModelPricing] = useState<{ prompt: number; completion: number } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingMessageId]);
 
   // Auto-resize textarea as user types
   useEffect(() => {
@@ -137,6 +138,15 @@ export default function Chat({
       inputRef.current?.focus();
     }, 0);
 
+    // Create assistant message placeholder for streaming (outside try block for error handling)
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+    };
+
     try {
       const apiKey = loadAPIKey();
       if (!apiKey) {
@@ -206,46 +216,84 @@ export default function Chat({
       }];
 
       const llmSettings = loadLLMSettings();
-      const response = await chatWithOpenRouter(apiKey, {
-        model,
-        messages: allMessages,
-        ...llmSettings,
-      });
-
-      // Track model usage
-      const promptTokens = response.usage?.prompt_tokens || 0;
-      const completionTokens = response.usage?.completion_tokens || 0;
-      const totalTokens = response.usage?.total_tokens || 0;
       
-      trackModelUsage(
-        model, 
-        totalTokens,
-        promptTokens,
-        completionTokens,
-        modelPricing || undefined
-      );
-      
-      // Update current session stats
-      setCurrentSessionTokens(prev => prev + totalTokens);
-      const cost = calculateCost(promptTokens, completionTokens);
-      setCurrentSessionCost(prev => prev + cost);
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: response.choices[0]?.message?.content || 'No response',
-        timestamp: Date.now(),
-      };
-
       onMessagesChange((prev) => [...prev, assistantMessage]);
+      setStreamingMessageId(assistantMessageId);
+
+      // Use streaming API
+      await chatWithOpenRouterStream(
+        apiKey,
+        {
+          model,
+          messages: allMessages,
+          ...llmSettings,
+        },
+        {
+          onChunk: (content) => {
+            // Update message content incrementally
+            onMessagesChange((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId
+                  ? { ...msg, content: msg.content + content }
+                  : msg
+              )
+            );
+          },
+          onComplete: (usage) => {
+            setStreamingMessageId(null);
+            
+            // Track model usage
+            const promptTokens = usage.prompt_tokens || 0;
+            const completionTokens = usage.completion_tokens || 0;
+            const totalTokens = usage.total_tokens || 0;
+            
+            trackModelUsage(
+              model, 
+              totalTokens,
+              promptTokens,
+              completionTokens,
+              modelPricing || undefined
+            );
+            
+            // Update current session stats
+            setCurrentSessionTokens(prev => prev + totalTokens);
+            const cost = calculateCost(promptTokens, completionTokens);
+            setCurrentSessionCost(prev => prev + cost);
+          },
+          onError: (error) => {
+            setStreamingMessageId(null);
+            // Update message with error
+            onMessagesChange((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId
+                  ? { ...msg, content: `Error: ${error.message || 'Failed to get response'}` }
+                  : msg
+              )
+            );
+          },
+        }
+      );
     } catch (error: any) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `Error: ${error.message || 'Failed to get response'}`,
-        timestamp: Date.now(),
-      };
-      onMessagesChange((prev) => [...prev, errorMessage]);
+      setStreamingMessageId(null);
+      // If we have a streaming message, update it with error, otherwise create new error message
+      onMessagesChange((prev) => {
+        const hasStreamingMessage = prev.some(m => m.id === assistantMessageId);
+        if (hasStreamingMessage) {
+          return prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, content: `Error: ${error.message || 'Failed to get response'}` }
+              : msg
+          );
+        } else {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: `Error: ${error.message || 'Failed to get response'}`,
+            timestamp: Date.now(),
+          };
+          return [...prev, errorMessage];
+        }
+      });
     } finally {
       setIsLoading(false);
     }
@@ -396,7 +444,7 @@ export default function Chat({
             </div>
           </div>
         ))}
-        {isLoading && (
+        {isLoading && !streamingMessageId && (
           <div className="flex justify-start">
             <div
               className="rounded-lg p-3"
