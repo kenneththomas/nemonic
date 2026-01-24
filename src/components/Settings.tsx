@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Settings as SettingsIcon, X, Search, RefreshCw } from 'lucide-react';
-import { loadAPIKey, saveAPIKey, loadModel, saveModel } from '../services/storage';
+import { loadAPIKey, saveAPIKey, loadModel, saveModel, loadSystemPrompt, saveSystemPrompt } from '../services/storage';
 import { getModels, ModelInfo } from '../services/openrouter';
 
 interface SettingsProps {
@@ -11,6 +11,7 @@ export default function Settings({ onModelChange }: SettingsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [apiKey, setApiKey] = useState(loadAPIKey());
   const [model, setModel] = useState(loadModel());
+  const [systemPrompt, setSystemPrompt] = useState(loadSystemPrompt());
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,6 +48,7 @@ export default function Settings({ onModelChange }: SettingsProps) {
   const handleSave = () => {
     saveAPIKey(apiKey);
     saveModel(model);
+    saveSystemPrompt(systemPrompt);
     onModelChange(model);
     setIsOpen(false);
   };
@@ -194,6 +196,22 @@ export default function Settings({ onModelChange }: SettingsProps) {
                     </p>
                   </div>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  System Prompt
+                </label>
+                <textarea
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  placeholder="Enter a system prompt to guide the AI's behavior (optional)..."
+                  rows={6}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-y font-mono"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This prompt will be included as a system message in every conversation. Leave empty to disable.
+                </p>
               </div>
 
               <div className="flex gap-3">

@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   MODEL: 'nemonic_model',
   SELECTED_MEMORIES: 'nemonic_selected_memories',
   SELECTED_DOCUMENTS: 'nemonic_selected_documents',
+  SYSTEM_PROMPT: 'nemonic_system_prompt',
 };
 
 export function saveMessages(messages: Message[]): void {
@@ -93,5 +94,18 @@ export function loadSelectedDocuments(): string[] {
   } catch (error) {
     console.error('Error loading selected documents:', error);
     return [];
+  }
+}
+
+export function saveSystemPrompt(prompt: string): void {
+  localStorage.setItem(STORAGE_KEYS.SYSTEM_PROMPT, prompt);
+}
+
+export function loadSystemPrompt(): string {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.SYSTEM_PROMPT) || '';
+  } catch (error) {
+    console.error('Error loading system prompt:', error);
+    return '';
   }
 }

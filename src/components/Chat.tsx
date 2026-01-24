@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import { Message } from '../types';
 import { chatWithOpenRouter, OpenRouterMessage } from '../services/openrouter';
-import { loadAPIKey, loadModel, saveMessages, loadMessages, loadDocuments, loadMemories } from '../services/storage';
+import { loadAPIKey, loadModel, saveMessages, loadMessages, loadDocuments, loadMemories, loadSystemPrompt } from '../services/storage';
 import { retrieveRelevantChunks } from '../services/rag';
 
 interface ChatProps {
@@ -47,6 +47,15 @@ export default function Chat({ selectedMemories, selectedDocuments, model }: Cha
 
       // Build context from selected memories and documents
       let contextMessages: OpenRouterMessage[] = [];
+
+      // Add custom system prompt if set
+      const systemPrompt = loadSystemPrompt();
+      if (systemPrompt.trim()) {
+        contextMessages.push({
+          role: 'system',
+          content: systemPrompt,
+        });
+      }
 
       // Add selected memories
       if (selectedMemories.length > 0) {
