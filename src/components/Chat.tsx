@@ -94,25 +94,27 @@ export default function Chat({
     
     usage.forEach(u => {
       totalTokens += u.totalTokens;
-      // Calculate cost using stored pricing if available, otherwise use current model pricing
+      // Calculate cost using stored pricing for each model
       const promptTokens = u.totalPromptTokens || 0;
       const completionTokens = u.totalCompletionTokens || 0;
       
-      if (u.pricing && promptTokens > 0 && completionTokens > 0) {
-        totalCost += calculateCost(promptTokens, completionTokens, u.pricing);
-      } else if (modelPricing && promptTokens > 0 && completionTokens > 0) {
-        // Fallback to current model pricing if stored pricing not available
-        totalCost += calculateCost(promptTokens, completionTokens, modelPricing);
-      } else if (modelPricing) {
-        // Last resort: estimate using current model pricing (for old data without breakdown)
-        const estimatedCost = (u.totalTokens / 1000000) * 
-          ((modelPricing.prompt + modelPricing.completion) / 2);
-        totalCost += estimatedCost;
+      if (u.pricing) {
+        // Use stored pricing for this specific model
+        if (promptTokens > 0 || completionTokens > 0) {
+          // If we have token breakdown, use accurate calculation
+          totalCost += calculateCost(promptTokens, completionTokens, u.pricing);
+        } else {
+          // Fallback: estimate using stored pricing and total tokens (for old data without breakdown)
+          const estimatedCost = (u.totalTokens / 1000000) * 
+            ((u.pricing.prompt + u.pricing.completion) / 2);
+          totalCost += estimatedCost;
+        }
       }
+      // If no stored pricing, skip cost calculation for this model (don't use wrong pricing)
     });
     
     return { totalTokens, totalCost };
-  }, [modelPricing, calculateCost]);
+  }, [calculateCost]);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -240,6 +242,7 @@ export default function Chat({
             );
           },
           onComplete: (usage) => {
+            console.log('onComplete called with usage:', usage);
             setStreamingMessageId(null);
             
             // Track model usage
@@ -247,17 +250,29 @@ export default function Chat({
             const completionTokens = usage.completion_tokens || 0;
             const totalTokens = usage.total_tokens || 0;
             
+            console.log('Token counts:', { promptTokens, completionTokens, totalTokens });
+            
+            // Ensure we have pricing before tracking (it should be loaded by now)
+            const pricingToStore = modelPricing || undefined;
+            
             trackModelUsage(
               model, 
               totalTokens,
               promptTokens,
               completionTokens,
-              modelPricing || undefined
+              pricingToStore
             );
             
             // Update current session stats
-            setCurrentSessionTokens(prev => prev + totalTokens);
-            const cost = calculateCost(promptTokens, completionTokens);
+            setCurrentSessionTokens(prev => {
+              const newTotal = prev + totalTokens;
+              console.log('Updating session tokens:', prev, '+', totalTokens, '=', newTotal);
+              return newTotal;
+            });
+            // Calculate cost using the pricing we're storing (or current modelPricing)
+            const cost = pricingToStore 
+              ? calculateCost(promptTokens, completionTokens, pricingToStore)
+              : 0;
             setCurrentSessionCost(prev => prev + cost);
           },
           onError: (error) => {

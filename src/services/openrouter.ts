@@ -110,6 +110,7 @@ export async function chatWithOpenRouterStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let finalUsage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null = null;
+  let seenDone = false;
 
   try {
     while (true) {
@@ -126,14 +127,17 @@ export async function chatWithOpenRouterStream(
       for (const line of lines) {
         if (line.trim() === '') continue;
         
+        // Skip SSE comments (like ": OPENROUTER PROCESSING")
+        if (line.startsWith(':')) {
+          continue;
+        }
+        
         if (line.startsWith('data: ')) {
           const data = line.slice(6);
           
           if (data === '[DONE]') {
-            if (finalUsage) {
-              callbacks.onComplete(finalUsage);
-            }
-            return;
+            seenDone = true;
+            break;
           }
 
           try {
@@ -145,23 +149,21 @@ export async function chatWithOpenRouterStream(
               callbacks.onChunk(contentDelta);
             }
 
-            // Extract usage from final chunk
+            // Extract usage - it comes in the final chunk before [DONE]
             if (chunk.usage) {
               finalUsage = chunk.usage;
-            }
-
-            // Check if stream is finished
-            if (chunk.choices[0]?.finish_reason) {
-              if (finalUsage) {
-                callbacks.onComplete(finalUsage);
-              }
-              return;
+              console.log('Usage data received:', chunk.usage);
             }
           } catch (e) {
             // Skip invalid JSON lines
             console.warn('Failed to parse SSE chunk:', data, e);
           }
         }
+      }
+
+      // Exit when we see [DONE]
+      if (seenDone) {
+        break;
       }
     }
 
@@ -180,8 +182,13 @@ export async function chatWithOpenRouterStream(
       }
     }
 
+    // Always call onComplete with usage data
     if (finalUsage) {
       callbacks.onComplete(finalUsage);
+    } else {
+      // If no usage data was found, log a warning and call with zeros
+      console.warn('No usage data found in streaming response');
+      callbacks.onComplete({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
     }
   } catch (error) {
     const err = error instanceof Error ? error : new Error('Unknown streaming error');
