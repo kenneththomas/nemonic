@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, X } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Settings as SettingsIcon, X, Search, RefreshCw } from 'lucide-react';
 import { loadAPIKey, saveAPIKey, loadModel, saveModel } from '../services/storage';
-import { getModels } from '../services/openrouter';
+import { getModels, ModelInfo } from '../services/openrouter';
 
 interface SettingsProps {
   onModelChange: (model: string) => void;
@@ -11,27 +11,38 @@ export default function Settings({ onModelChange }: SettingsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [apiKey, setApiKey] = useState(loadAPIKey());
   const [model, setModel] = useState(loadModel());
-  const [availableModels, setAvailableModels] = useState<any[]>([]);
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [hasLoadedModels, setHasLoadedModels] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && apiKey) {
-      loadAvailableModels();
-    }
-  }, [isOpen, apiKey]);
-
-  const loadAvailableModels = async () => {
-    if (!apiKey) return;
+  const loadAvailableModels = useCallback(async () => {
     setIsLoadingModels(true);
     try {
-      const models = await getModels(apiKey);
+      // Try with API key if available, otherwise try public endpoint
+      const models = await getModels(apiKey || undefined);
       setAvailableModels(models);
+      setHasLoadedModels(true);
     } catch (error) {
       console.error('Error loading models:', error);
     } finally {
       setIsLoadingModels(false);
     }
-  };
+  }, [apiKey]);
+
+  useEffect(() => {
+    if (isOpen) {
+      // Try to load models immediately when settings open
+      loadAvailableModels();
+    }
+  }, [isOpen, loadAvailableModels]);
+
+  useEffect(() => {
+    // Reload models when API key changes (if we've already loaded once)
+    if (isOpen && apiKey && hasLoadedModels) {
+      loadAvailableModels();
+    }
+  }, [apiKey, isOpen, hasLoadedModels, loadAvailableModels]);
 
   const handleSave = () => {
     saveAPIKey(apiKey);
@@ -40,16 +51,25 @@ export default function Settings({ onModelChange }: SettingsProps) {
     setIsOpen(false);
   };
 
-  const popularModels = [
-    'openai/gpt-4-turbo',
-    'openai/gpt-4',
-    'openai/gpt-3.5-turbo',
-    'anthropic/claude-3-opus',
-    'anthropic/claude-3-sonnet',
-    'anthropic/claude-3-haiku',
-    'google/gemini-pro',
-    'meta-llama/llama-3-70b-instruct',
-  ];
+  const filteredModels = availableModels.filter(m => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      m.id.toLowerCase().includes(query) ||
+      m.name?.toLowerCase().includes(query) ||
+      m.description?.toLowerCase().includes(query)
+    );
+  });
+
+  // Sort models: popular ones first, then alphabetically
+  const sortedModels = [...filteredModels].sort((a, b) => {
+    const popular = ['openai/gpt-4', 'openai/gpt-3.5', 'anthropic/claude', 'google/gemini'];
+    const aIsPopular = popular.some(p => a.id.includes(p));
+    const bIsPopular = popular.some(p => b.id.includes(p));
+    if (aIsPopular && !bIsPopular) return -1;
+    if (!aIsPopular && bIsPopular) return 1;
+    return a.id.localeCompare(b.id);
+  });
 
   return (
     <>
@@ -100,39 +120,79 @@ export default function Settings({ onModelChange }: SettingsProps) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Model
-                </label>
-                <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
-                >
-                  {popularModels.map((modelId) => (
-                    <option key={modelId} value={modelId}>
-                      {modelId}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={loadAvailableModels}
-                  disabled={!apiKey || isLoadingModels}
-                  className="mt-2 text-sm text-blue-400 hover:text-blue-300 disabled:text-gray-600"
-                >
-                  {isLoadingModels ? 'Loading...' : 'Load All Models'}
-                </button>
-                {availableModels.length > 0 && (
-                  <select
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 mt-2"
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-300">
+                    Model
+                  </label>
+                  <button
+                    onClick={loadAvailableModels}
+                    disabled={isLoadingModels}
+                    className="text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-600 flex items-center gap-1"
+                    title="Refresh model list"
                   >
-                    {availableModels.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name || m.id} {m.pricing?.prompt && `($${m.pricing.prompt}/1M tokens)`}
-                      </option>
-                    ))}
-                  </select>
+                    <RefreshCw size={14} className={isLoadingModels ? 'animate-spin' : ''} />
+                    {isLoadingModels ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
+                
+                {isLoadingModels && availableModels.length === 0 ? (
+                  <div className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-8 text-center text-gray-400">
+                    Loading models...
+                  </div>
+                ) : availableModels.length > 0 ? (
+                  <>
+                    <div className="relative mb-2">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search models..."
+                        className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <select
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                    >
+                      {sortedModels.map((m) => {
+                        const pricing = m.pricing?.prompt 
+                          ? ` ($${m.pricing.prompt}/1M prompt`
+                          : '';
+                        const completionPricing = m.pricing?.completion
+                          ? `, $${m.pricing.completion}/1M completion)`
+                          : pricing ? ')' : '';
+                        const context = m.context_length 
+                          ? ` - ${(m.context_length / 1000).toFixed(0)}k ctx`
+                          : '';
+                        return (
+                          <option key={m.id} value={m.id}>
+                            {m.name || m.id}{pricing}{completionPricing}{context}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    {sortedModels.length === 0 && searchQuery && (
+                      <p className="text-xs text-gray-500 mt-1">No models found matching "{searchQuery}"</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      {sortedModels.length} of {availableModels.length} models shown
+                    </p>
+                  </>
+                ) : (
+                  <div className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white">
+                    <select
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      className="w-full bg-transparent focus:outline-none"
+                    >
+                      <option value={model}>{model}</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Enter API key and click Refresh to load available models
+                    </p>
+                  </div>
                 )}
               </div>
 

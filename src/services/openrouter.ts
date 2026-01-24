@@ -51,15 +51,46 @@ export async function chatWithOpenRouter(
   return response.json();
 }
 
-export async function getModels(apiKey: string): Promise<any[]> {
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description?: string;
+  pricing?: {
+    prompt?: string;
+    completion?: string;
+  };
+  context_length?: number;
+  architecture?: {
+    modality?: string;
+    tokenizer?: string;
+    instruct_type?: string;
+  };
+  top_provider?: {
+    max_completion_tokens?: number;
+    is_moderated?: boolean;
+  };
+}
+
+export async function getModels(apiKey?: string): Promise<ModelInfo[]> {
   try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Try with API key if provided, otherwise try public endpoint
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
     const response = await fetch('https://openrouter.ai/api/v1/models', {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers,
     });
 
     if (!response.ok) {
+      // If public endpoint fails, try again with API key if we have one
+      if (!apiKey) {
+        throw new Error('Failed to fetch models. API key may be required.');
+      }
       throw new Error('Failed to fetch models');
     }
 

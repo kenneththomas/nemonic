@@ -15,8 +15,13 @@ export function saveMessages(messages: Message[]): void {
 }
 
 export function loadMessages(): Message[] {
-  const data = localStorage.getItem(STORAGE_KEYS.MESSAGES);
-  return data ? JSON.parse(data) : [];
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.MESSAGES);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error loading messages:', error);
+    return [];
+  }
 }
 
 export function saveMemories(memories: Memory[]): void {
@@ -24,8 +29,13 @@ export function saveMemories(memories: Memory[]): void {
 }
 
 export function loadMemories(): Memory[] {
-  const data = localStorage.getItem(STORAGE_KEYS.MEMORIES);
-  return data ? JSON.parse(data) : [];
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.MEMORIES);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error loading memories:', error);
+    return [];
+  }
 }
 
 export function saveDocuments(documents: DocumentChunk[]): void {
@@ -33,8 +43,13 @@ export function saveDocuments(documents: DocumentChunk[]): void {
 }
 
 export function loadDocuments(): DocumentChunk[] {
-  const data = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
-  return data ? JSON.parse(data) : [];
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error loading documents:', error);
+    return [];
+  }
 }
 
 export function saveAPIKey(apiKey: string): void {
@@ -58,8 +73,13 @@ export function saveSelectedMemories(ids: string[]): void {
 }
 
 export function loadSelectedMemories(): string[] {
-  const data = localStorage.getItem(STORAGE_KEYS.SELECTED_MEMORIES);
-  return data ? JSON.parse(data) : [];
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.SELECTED_MEMORIES);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error loading selected memories:', error);
+    return [];
+  }
 }
 
 export function saveSelectedDocuments(ids: string[]): void {
@@ -67,6 +87,11 @@ export function saveSelectedDocuments(ids: string[]): void {
 }
 
 export function loadSelectedDocuments(): string[] {
-  const data = localStorage.getItem(STORAGE_KEYS.SELECTED_DOCUMENTS);
-  return data ? JSON.parse(data) : [];
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.SELECTED_DOCUMENTS);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error loading selected documents:', error);
+    return [];
+  }
 }
