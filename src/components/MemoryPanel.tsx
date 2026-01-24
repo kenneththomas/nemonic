@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { Memory } from '../types';
 import { loadMemories, saveMemories } from '../services/storage';
@@ -42,6 +42,7 @@ export default function MemoryPanel({
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [editTriggerWords, setEditTriggerWords] = useState('');
+  const [editAutoselect, setEditAutoselect] = useState(false);
 
   useEffect(() => {
     saveMemories(memories);
@@ -74,6 +75,21 @@ export default function MemoryPanel({
     rest.sort(byUse);
     return [...triggered, ...rest];
   }, [memories, triggeredIds]);
+
+  const prevTriggeredRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const toAdd: string[] = [];
+    for (const m of memories) {
+      if (!m.autoselect || !triggeredIds.has(m.id)) continue;
+      if (selectedMemories.includes(m.id)) continue;
+      if (prevTriggeredRef.current.has(m.id)) continue;
+      toAdd.push(m.id);
+    }
+    if (toAdd.length > 0) {
+      onSelectionChange([...selectedMemories, ...toAdd]);
+    }
+    prevTriggeredRef.current = new Set(triggeredIds);
+  }, [triggeredIds, memories, selectedMemories, onSelectionChange]);
 
   const handleAdd = () => {
     if (!newTitle.trim() || !newContent.trim()) return;
@@ -111,6 +127,7 @@ export default function MemoryPanel({
     setEditTitle(m.title);
     setEditContent(m.content);
     setEditTriggerWords(formatTriggerWords(m.triggerWords ?? []));
+    setEditAutoselect(m.autoselect ?? false);
   };
 
   const saveEdit = () => {
@@ -124,6 +141,7 @@ export default function MemoryPanel({
               title: editTitle.trim(),
               content: editContent.trim(),
               triggerWords: words.length ? words : undefined,
+              autoselect: editAutoselect,
             }
           : m
       )
@@ -132,6 +150,7 @@ export default function MemoryPanel({
     setEditTitle('');
     setEditContent('');
     setEditTriggerWords('');
+    setEditAutoselect(false);
   };
 
   const cancelEdit = () => {
@@ -139,6 +158,7 @@ export default function MemoryPanel({
     setEditTitle('');
     setEditContent('');
     setEditTriggerWords('');
+    setEditAutoselect(false);
   };
 
   return (
@@ -350,6 +370,32 @@ export default function MemoryPanel({
                     color: 'var(--theme-input-text)',
                   }}
                 />
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={editAutoselect}
+                    onClick={() => setEditAutoselect(!editAutoselect)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)] focus:ring-offset-2 focus:ring-offset-[var(--theme-bg-panel)] ${
+                      editAutoselect ? 'bg-[var(--theme-accent)]' : 'bg-[var(--theme-button-inactive-bg)]'
+                    }`}
+                    style={{ color: 'var(--theme-text-muted)' }}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+                        editAutoselect ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                  <span className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
+                    {editAutoselect ? 'Autoselect' : 'Suggest'}
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--theme-text-muted)' }}>
+                    {editAutoselect
+                      ? '— trigger match adds to selection (you can unselect)'
+                      : '— trigger match only highlights; click to select'}
+                  </span>
+                </div>
               </div>
             </div>
             <div className="flex gap-2">

@@ -22,6 +22,8 @@ export interface Memory {
   useCount?: number;
   /** Words or phrases that, when typed in chat, suggest this memory (flash/shake, move to top). */
   triggerWords?: string[];
+  /** When true, trigger match auto-selects this memory (user can still unselect). When false, only suggests. */
+  autoselect?: boolean;
 }
 
 export interface Model {
