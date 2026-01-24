@@ -57,7 +57,7 @@ export async function chatWithOpenRouter(
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': window.location.origin,
+      'HTTP-Referer': 'https://nemonic.app',
       'X-Title': 'Nemonic Chat',
     },
     body: JSON.stringify(request),
@@ -87,8 +87,8 @@ export async function chatWithOpenRouterStream(
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': window.location.origin,
-      'X-Title': 'Nemonic Chat',
+      'HTTP-Referer': 'https://nemonic.app',
+      'X-Title': 'nemonic',
     },
     body: JSON.stringify({ ...request, stream: true }),
   });
