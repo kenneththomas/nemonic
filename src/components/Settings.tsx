@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Settings as SettingsIcon, X, Search, RefreshCw, ArrowUpDown, Filter } from 'lucide-react';
-import { loadAPIKey, saveAPIKey, loadModel, saveModel, loadSystemPrompt, saveSystemPrompt, loadModelUsage } from '../services/storage';
+import { loadAPIKey, saveAPIKey, loadModel, saveModel, loadSystemPrompt, saveSystemPrompt, loadModelUsage, loadLLMSettings, saveLLMSettings, LLMSettings } from '../services/storage';
 import { getModels, ModelInfo } from '../services/openrouter';
 
 interface SettingsProps {
@@ -12,6 +12,7 @@ export default function Settings({ onModelChange }: SettingsProps) {
   const [apiKey, setApiKey] = useState(loadAPIKey());
   const [model, setModel] = useState(loadModel());
   const [systemPrompt, setSystemPrompt] = useState(loadSystemPrompt());
+  const [llmSettings, setLlmSettings] = useState<LLMSettings>(loadLLMSettings());
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,6 +62,7 @@ export default function Settings({ onModelChange }: SettingsProps) {
     saveAPIKey(apiKey);
     saveModel(model);
     saveSystemPrompt(systemPrompt);
+    saveLLMSettings(llmSettings);
     onModelChange(model);
     setIsOpen(false);
   };
@@ -393,6 +395,104 @@ export default function Settings({ onModelChange }: SettingsProps) {
                 <p className="text-xs text-gray-500 mt-1">
                   This prompt will be included as a system message in every conversation. Leave empty to disable.
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  LLM Parameters
+                </label>
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-gray-400">Temperature</label>
+                      <span className="text-xs text-gray-500">{llmSettings.temperature ?? 0.7}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                      value={llmSettings.temperature ?? 0.7}
+                      onChange={(e) => setLlmSettings({ ...llmSettings, temperature: parseFloat(e.target.value) })}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Controls randomness. Lower = more focused, Higher = more creative (0.0-2.0)
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Max Tokens</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100000"
+                      value={llmSettings.max_tokens ?? 2000}
+                      onChange={(e) => setLlmSettings({ ...llmSettings, max_tokens: parseInt(e.target.value) || undefined })}
+                      className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-sm focus:outline-none focus:border-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Maximum number of tokens in the response
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-gray-400">Top P</label>
+                      <span className="text-xs text-gray-500">{llmSettings.top_p ?? 1.0}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={llmSettings.top_p ?? 1.0}
+                      onChange={(e) => setLlmSettings({ ...llmSettings, top_p: parseFloat(e.target.value) })}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Nucleus sampling: considers tokens with top_p probability mass (0.0-1.0)
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-gray-400">Frequency Penalty</label>
+                      <span className="text-xs text-gray-500">{llmSettings.frequency_penalty ?? 0.0}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="-2"
+                      max="2"
+                      step="0.1"
+                      value={llmSettings.frequency_penalty ?? 0.0}
+                      onChange={(e) => setLlmSettings({ ...llmSettings, frequency_penalty: parseFloat(e.target.value) })}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Reduces repetition based on token frequency (-2.0 to 2.0)
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-gray-400">Presence Penalty</label>
+                      <span className="text-xs text-gray-500">{llmSettings.presence_penalty ?? 0.0}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="-2"
+                      max="2"
+                      step="0.1"
+                      value={llmSettings.presence_penalty ?? 0.0}
+                      onChange={(e) => setLlmSettings({ ...llmSettings, presence_penalty: parseFloat(e.target.value) })}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Encourages new topics by penalizing already used tokens (-2.0 to 2.0)
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="flex gap-3">

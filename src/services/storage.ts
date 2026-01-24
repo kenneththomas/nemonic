@@ -14,6 +14,7 @@ const STORAGE_KEYS = {
   ACTIVE_CONVERSATION_ID: 'nemonic_active_conversation_id',
   CONVERSATION_MESSAGES: 'nemonic_conversation_messages',
   THEME: 'nemonic_theme',
+  LLM_SETTINGS: 'nemonic_llm_settings',
 };
 
 export type ThemeId = 'default' | 'ios';
@@ -124,6 +125,48 @@ export function loadSystemPrompt(): string {
   } catch (error) {
     console.error('Error loading system prompt:', error);
     return '';
+  }
+}
+
+export interface LLMSettings {
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+}
+
+export function saveLLMSettings(settings: LLMSettings): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.LLM_SETTINGS, JSON.stringify(settings));
+  } catch (error) {
+    console.error('Error saving LLM settings:', error);
+  }
+}
+
+export function loadLLMSettings(): LLMSettings {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.LLM_SETTINGS);
+    if (data) {
+      return JSON.parse(data);
+    }
+    // Return defaults
+    return {
+      temperature: 0.7,
+      max_tokens: 2000,
+      top_p: 1.0,
+      frequency_penalty: 0.0,
+      presence_penalty: 0.0,
+    };
+  } catch (error) {
+    console.error('Error loading LLM settings:', error);
+    return {
+      temperature: 0.7,
+      max_tokens: 2000,
+      top_p: 1.0,
+      frequency_penalty: 0.0,
+      presence_penalty: 0.0,
+    };
   }
 }
 

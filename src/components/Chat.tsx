@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Send, Loader2, Coins, Zap, MoreVertical, Trash2 } from 'lucide-react';
 import { Message } from '../types';
 import { chatWithOpenRouter, OpenRouterMessage } from '../services/openrouter';
-import { loadAPIKey, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage } from '../services/storage';
+import { loadAPIKey, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage, loadLLMSettings } from '../services/storage';
 import { retrieveRelevantChunks } from '../services/rag';
 
 interface ChatProps {
@@ -191,11 +191,11 @@ export default function Chat({
         content: input,
       }];
 
+      const llmSettings = loadLLMSettings();
       const response = await chatWithOpenRouter(apiKey, {
         model,
         messages: allMessages,
-        temperature: 0.7,
-        max_tokens: 2000,
+        ...llmSettings,
       });
 
       // Track model usage

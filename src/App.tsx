@@ -133,12 +133,23 @@ function App() {
           borderColor: 'var(--theme-border)',
         }}
       >
-        <h1
-          className="text-xl font-bold"
-          style={{ color: 'var(--theme-text)' }}
-        >
-          Nemonic
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1
+            className="text-xl font-bold"
+            style={{ color: 'var(--theme-text)' }}
+          >
+            Nemonic
+          </h1>
+          <span
+            className="px-2 py-0.5 rounded text-xs font-medium opacity-80"
+            style={{
+              backgroundColor: 'var(--theme-button-inactive-bg)',
+              color: 'var(--theme-button-inactive-text)',
+            }}
+          >
+            v1.8
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowThemesPanel(!showThemesPanel)}
