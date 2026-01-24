@@ -178,6 +178,12 @@ export default function Chat({
         ? [...contextMessages, ...conversationMessages]
         : [...contextMessages, ...conversationMessages, { role: 'user' as const, content: userContent }];
 
+      const useOnlineSearch = !!llmSettings.online_search;
+      const effectiveModel =
+        useOnlineSearch && !modelToUse.endsWith(':online')
+          ? `${modelToUse}:online`
+          : modelToUse;
+
       let pricingToUse: { prompt: number; completion: number } | null = null;
       if (modelToUse === model) {
         pricingToUse = modelPricing;
@@ -222,10 +228,11 @@ export default function Chat({
         updateMessageContent(displayedContent);
       }, STREAM_WORD_DELAY_MS);
 
+      const { online_search: _online, max_messages: _maxMsgs, ...apiLlmSettings } = llmSettings;
       try {
         await chatWithOpenRouterStream(
           apiKey,
-          { model: modelToUse, messages: allMessages, ...llmSettings },
+          { model: effectiveModel, messages: allMessages, ...apiLlmSettings },
           {
             onChunk: (c) => { streamBuffer += c; },
             onComplete: (usage) => {
@@ -241,7 +248,7 @@ export default function Chat({
               const totalTokens = usage.total_tokens || 0;
               const pricingToStore = pricingToUse ?? undefined;
               trackModelUsage(
-                modelToUse,
+                effectiveModel,
                 totalTokens,
                 promptTokens,
                 completionTokens,

@@ -517,6 +517,30 @@ export default function Settings({ onModelChange }: SettingsProps) {
                       Maximum number of conversation messages to include in context. Lower values reduce token usage and costs.
                     </p>
                   </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-700">
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-0.5">Online search (OpenRouter)</label>
+                      <p className="text-xs text-gray-500">
+                        Use real-time web search (model:online). ~$4 per 1k web results.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!!llmSettings.online_search}
+                      onClick={() => setLlmSettings({ ...llmSettings, online_search: !llmSettings.online_search })}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${
+                        llmSettings.online_search ? 'bg-blue-600' : 'bg-gray-600'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+                          llmSettings.online_search ? 'translate-x-5' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
               </div>
 

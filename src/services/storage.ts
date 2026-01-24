@@ -149,6 +149,8 @@ export interface LLMSettings {
   frequency_penalty?: number;
   presence_penalty?: number;
   max_messages?: number;
+  /** Enable OpenRouter online search (append :online to model; ~$4/1k web results). */
+  online_search?: boolean;
 }
 
 export function saveLLMSettings(settings: LLMSettings): void {
