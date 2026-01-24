@@ -37,6 +37,8 @@ function App() {
   const [showConversationsPanel, setShowConversationsPanel] = useState(true);
   const [showThemesPanel, setShowThemesPanel] = useState(false);
   const [theme, setThemeState] = useState<ThemeId>(loadTheme());
+  const [chatInput, setChatInput] = useState('');
+  const [memoryUsageVersion, setMemoryUsageVersion] = useState(0);
 
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
   const [activeConversationId, setActiveConversationIdState] = useState<string | null>(() =>
@@ -220,6 +222,8 @@ function App() {
             <MemoryPanel
               selectedMemories={selectedMemories}
               onSelectionChange={setSelectedMemories}
+              chatInput={chatInput}
+              memoryUsageVersion={memoryUsageVersion}
             />
           </div>
         )}
@@ -232,6 +236,8 @@ function App() {
             selectedMemories={selectedMemories}
             selectedDocuments={selectedDocuments}
             model={model}
+            onInputChange={setChatInput}
+            onMemoriesUsed={() => setMemoryUsageVersion((v) => v + 1)}
           />
         </div>
 

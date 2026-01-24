@@ -85,6 +85,22 @@ code {
   font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', 'Courier New', monospace;
 }
 
+/* Dynamic memory: suggest triggered memories */
+@keyframes memory-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+@keyframes memory-flash {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 0 2px var(--theme-accent); }
+}
+.animate-memory-suggest {
+  animation: memory-shake 0.5s ease-in-out, memory-flash 0.5s ease-in-out;
+}
+
 input::placeholder,
 textarea::placeholder {
   color: var(--theme-placeholder);

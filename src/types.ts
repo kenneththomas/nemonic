@@ -18,6 +18,10 @@ export interface Memory {
   content: string;
   timestamp: number;
   tags?: string[];
+  /** Number of times this memory was used (selected when sending). Default 0. */
+  useCount?: number;
+  /** Words or phrases that, when typed in chat, suggest this memory (flash/shake, move to top). */
+  triggerWords?: string[];
 }
 
 export interface Model {

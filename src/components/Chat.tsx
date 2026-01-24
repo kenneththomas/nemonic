@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Send, Loader2, Coins, Zap, MoreVertical, Trash2 } from 'lucide-react';
 import { Message } from '../types';
 import { chatWithOpenRouter, OpenRouterMessage } from '../services/openrouter';
-import { loadAPIKey, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage, loadLLMSettings } from '../services/storage';
+import { loadAPIKey, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage, loadLLMSettings, incrementMemoryUseCount } from '../services/storage';
 import { retrieveRelevantChunks } from '../services/rag';
 
 interface ChatProps {
@@ -12,6 +12,8 @@ interface ChatProps {
   selectedMemories: string[];
   selectedDocuments: string[];
   model: string;
+  onInputChange?: (value: string) => void;
+  onMemoriesUsed?: () => void;
 }
 
 export default function Chat({
@@ -21,6 +23,8 @@ export default function Chat({
   selectedMemories,
   selectedDocuments,
   model,
+  onInputChange,
+  onMemoriesUsed,
 }: ChatProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -120,7 +124,12 @@ export default function Chat({
     };
 
     onMessagesChange((prev) => [...prev, userMessage]);
+    if (selectedMemories.length > 0) {
+      incrementMemoryUseCount(selectedMemories);
+      onMemoriesUsed?.();
+    }
     setInput('');
+    onInputChange?.('');
     setIsLoading(true);
 
     try {
@@ -399,7 +408,10 @@ export default function Chat({
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              onInputChange?.(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();

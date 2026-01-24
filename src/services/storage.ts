@@ -57,6 +57,20 @@ export function loadMemories(): Memory[] {
   }
 }
 
+/** Increment useCount for each memory whose id is in `ids`. Call when user sends a message with those memories selected. */
+export function incrementMemoryUseCount(ids: string[]): void {
+  if (ids.length === 0) return;
+  const memories = loadMemories();
+  let changed = false;
+  for (const m of memories) {
+    if (ids.includes(m.id)) {
+      m.useCount = (m.useCount ?? 0) + 1;
+      changed = true;
+    }
+  }
+  if (changed) saveMemories(memories);
+}
+
 export function saveDocuments(documents: DocumentChunk[]): void {
   localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(documents));
 }
