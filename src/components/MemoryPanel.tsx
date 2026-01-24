@@ -218,19 +218,24 @@ export default function MemoryPanel({
         )}
         {sortedMemories.map((memory) => {
           const isTriggered = triggeredIds.has(memory.id);
+          const isSelected = selectedMemories.includes(memory.id);
           return (
             <div
               key={memory.id}
-              className={`border rounded-xl p-4 min-h-[7rem] cursor-pointer transition-colors relative ${
+              className={`border rounded-xl p-4 cursor-pointer transition-colors relative ${
                 isTriggered ? 'animate-memory-suggest' : ''
-              } ${!selectedMemories.includes(memory.id) ? 'hover:bg-[var(--theme-bg-panel-hover)]' : ''}`}
+              } ${!isSelected ? 'hover:bg-[var(--theme-bg-panel-hover)]' : ''}`}
               style={{
-                backgroundColor: selectedMemories.includes(memory.id)
+                backgroundColor: isSelected
                   ? 'var(--theme-conv-active-bg)'
-                  : 'var(--theme-bg-panel-hover)',
-                borderColor: selectedMemories.includes(memory.id)
+                  : isTriggered
+                    ? 'var(--theme-memory-suggest-bg)'
+                    : 'var(--theme-bg-panel-hover)',
+                borderColor: isSelected
                   ? 'var(--theme-conv-active-border)'
-                  : 'var(--theme-border)',
+                  : isTriggered
+                    ? 'var(--theme-memory-suggest-border)'
+                    : 'var(--theme-border)',
               }}
               onClick={() => toggleSelection(memory.id)}
             >
@@ -269,14 +274,11 @@ export default function MemoryPanel({
                 </button>
               </div>
               <div className="pr-24">
-                <div className="font-semibold text-base mb-1.5" style={{ color: 'var(--theme-text)' }}>
+                <div className="font-semibold text-base" style={{ color: 'var(--theme-text)' }}>
                   {memory.title}
                 </div>
-                <div className="text-sm line-clamp-4 leading-snug" style={{ color: 'var(--theme-text-muted)' }}>
-                  {memory.content}
-                </div>
               </div>
-              {selectedMemories.includes(memory.id) && (
+              {isSelected && (
                 <div className="mt-2.5 text-sm" style={{ color: 'var(--theme-accent)' }}>
                   Selected
                 </div>
