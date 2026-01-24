@@ -148,6 +148,7 @@ export interface LLMSettings {
   top_p?: number;
   frequency_penalty?: number;
   presence_penalty?: number;
+  max_messages?: number;
 }
 
 export function saveLLMSettings(settings: LLMSettings): void {
@@ -171,6 +172,7 @@ export function loadLLMSettings(): LLMSettings {
       top_p: 1.0,
       frequency_penalty: 0.0,
       presence_penalty: 0.0,
+      max_messages: 10,
     };
   } catch (error) {
     console.error('Error loading LLM settings:', error);
@@ -180,6 +182,7 @@ export function loadLLMSettings(): LLMSettings {
       top_p: 1.0,
       frequency_penalty: 0.0,
       presence_penalty: 0.0,
+      max_messages: 10,
     };
   }
 }

@@ -149,7 +149,7 @@ function App() {
               color: 'var(--theme-button-inactive-text)',
             }}
           >
-            v1.8
+            v1.16
           </span>
         </div>
         <div className="flex items-center gap-2">

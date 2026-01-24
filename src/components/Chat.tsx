@@ -131,6 +131,9 @@ export default function Chat({
       const apiKey = loadAPIKey();
       if (!apiKey) throw new Error('API key not set. Please configure it in settings.');
 
+      const llmSettings = loadLLMSettings();
+      const maxMessages = llmSettings.max_messages ?? 10;
+
       let contextMessages: OpenRouterMessage[] = [];
       const systemPrompt = loadSystemPrompt();
       if (systemPrompt.trim()) {
@@ -169,7 +172,7 @@ export default function Chat({
       }
 
       const conversationMessages: OpenRouterMessage[] = historyMessages
-        .slice(-10)
+        .slice(-maxMessages)
         .map(m => ({ role: m.role, content: m.content }));
       const allMessages = isRerun
         ? [...contextMessages, ...conversationMessages]
@@ -193,7 +196,6 @@ export default function Chat({
         }
       }
 
-      const llmSettings = loadLLMSettings();
       const STREAM_WORD_DELAY_MS = 45;
       let streamBuffer = '';
       let displayedContent = '';

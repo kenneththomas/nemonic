@@ -502,6 +502,21 @@ export default function Settings({ onModelChange }: SettingsProps) {
                       Encourages new topics by penalizing already used tokens (-2.0 to 2.0)
                     </p>
                   </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Max Messages in Context</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="1000"
+                      value={llmSettings.max_messages ?? 10}
+                      onChange={(e) => setLlmSettings({ ...llmSettings, max_messages: parseInt(e.target.value) || undefined })}
+                      className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-sm focus:outline-none focus:border-blue-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Maximum number of conversation messages to include in context. Lower values reduce token usage and costs.
+                    </p>
+                  </div>
                 </div>
               </div>
 
