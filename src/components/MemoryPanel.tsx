@@ -48,13 +48,19 @@ export default function MemoryPanel({ selectedMemories, onSelectionChange }: Mem
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-900 border-r border-gray-700">
-      <div className="p-4 border-b border-gray-700">
+    <div
+      className="h-full flex flex-col border-r"
+      style={{ backgroundColor: 'var(--theme-bg-panel)', borderColor: 'var(--theme-border)' }}
+    >
+      <div className="p-4 border-b" style={{ borderColor: 'var(--theme-border)' }}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">Memories</h2>
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--theme-text)' }}>
+            Memories
+          </h2>
           <button
             onClick={() => setIsAdding(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg"
+            className="text-white p-2 rounded-lg transition-colors hover:opacity-90"
+            style={{ backgroundColor: 'var(--theme-accent)' }}
           >
             <Plus size={20} />
           </button>
@@ -66,19 +72,29 @@ export default function MemoryPanel({ selectedMemories, onSelectionChange }: Mem
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="Memory title..."
-              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+              className="w-full rounded px-3 py-2 text-sm focus:outline-none focus:border-2 focus:border-[var(--theme-accent)] border"
+              style={{
+                backgroundColor: 'var(--theme-input-bg)',
+                borderColor: 'var(--theme-border)',
+                color: 'var(--theme-input-text)',
+              }}
             />
             <textarea
               value={newContent}
               onChange={(e) => setNewContent(e.target.value)}
               placeholder="Memory content..."
               rows={3}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-none"
+              className="w-full rounded px-3 py-2 text-sm focus:outline-none focus:border-2 focus:border-[var(--theme-accent)] border resize-none"
+              style={{
+                backgroundColor: 'var(--theme-input-bg)',
+                borderColor: 'var(--theme-border)',
+                color: 'var(--theme-input-text)',
+              }}
             />
             <div className="flex gap-2">
               <button
                 onClick={handleAdd}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition-colors"
               >
                 Save
               </button>
@@ -88,7 +104,11 @@ export default function MemoryPanel({ selectedMemories, onSelectionChange }: Mem
                   setNewTitle('');
                   setNewContent('');
                 }}
-                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm"
+                className="flex-1 px-3 py-1 rounded text-sm transition-colors"
+                style={{
+                  backgroundColor: 'var(--theme-button-inactive-bg)',
+                  color: 'var(--theme-button-inactive-text)',
+                }}
               >
                 Cancel
               </button>
@@ -98,7 +118,7 @@ export default function MemoryPanel({ selectedMemories, onSelectionChange }: Mem
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
         {memories.length === 0 && (
-          <div className="text-gray-500 text-sm text-center mt-4">
+          <div className="text-sm text-center mt-4" style={{ color: 'var(--theme-text-muted)' }}>
             No memories yet. Add one to get started.
           </div>
         )}
@@ -106,18 +126,24 @@ export default function MemoryPanel({ selectedMemories, onSelectionChange }: Mem
           <div
             key={memory.id}
             className={`border rounded-lg p-3 cursor-pointer transition-colors ${
-              selectedMemories.includes(memory.id)
-                ? 'border-blue-500 bg-blue-500/10'
-                : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+              !selectedMemories.includes(memory.id) ? 'hover:bg-[var(--theme-bg-panel-hover)]' : ''
             }`}
+            style={{
+              backgroundColor: selectedMemories.includes(memory.id)
+                ? 'var(--theme-conv-active-bg)'
+                : 'var(--theme-bg-panel-hover)',
+              borderColor: selectedMemories.includes(memory.id)
+                ? 'var(--theme-conv-active-border)'
+                : 'var(--theme-border)',
+            }}
             onClick={() => toggleSelection(memory.id)}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1">
-                <div className="font-semibold text-white text-sm mb-1">
+                <div className="font-semibold text-sm mb-1" style={{ color: 'var(--theme-text)' }}>
                   {memory.title}
                 </div>
-                <div className="text-gray-400 text-xs line-clamp-2">
+                <div className="text-xs line-clamp-2" style={{ color: 'var(--theme-text-muted)' }}>
                   {memory.content}
                 </div>
               </div>
@@ -126,13 +152,14 @@ export default function MemoryPanel({ selectedMemories, onSelectionChange }: Mem
                   e.stopPropagation();
                   handleDelete(memory.id);
                 }}
-                className="text-red-400 hover:text-red-300 p-1"
+                className="p-1 transition-colors"
+                style={{ color: 'var(--theme-delete-hover)' }}
               >
                 <Trash2 size={16} />
               </button>
             </div>
             {selectedMemories.includes(memory.id) && (
-              <div className="mt-2 text-xs text-blue-400">Selected</div>
+              <div className="mt-2 text-xs" style={{ color: 'var(--theme-accent)' }}>Selected</div>
             )}
           </div>
         ))}

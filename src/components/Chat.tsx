@@ -268,31 +268,42 @@ export default function Chat({
   return (
     <div className="flex flex-col h-full">
       {/* Stats Bar */}
-      <div className="border-b border-gray-700 bg-gray-900 px-4 py-2">
+      <div
+        className="border-b px-4 py-2"
+        style={{ backgroundColor: 'var(--theme-stats-bg)', borderColor: 'var(--theme-border)' }}
+      >
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1 text-gray-400">
+            <div className="flex items-center gap-1" style={{ color: 'var(--theme-text-muted)' }}>
               <Zap size={14} />
               <span>Session:</span>
-              <span className="text-white font-medium">{currentSessionTokens.toLocaleString()} tokens</span>
+              <span className="font-medium" style={{ color: 'var(--theme-text)' }}>
+                {currentSessionTokens.toLocaleString()} tokens
+              </span>
               {currentSessionCost > 0 && (
                 <>
-                  <span className="text-gray-500 mx-1">•</span>
+                  <span className="mx-1 opacity-60">•</span>
                   <Coins size={14} />
-                  <span className="text-white font-medium">${currentSessionCost.toFixed(4)}</span>
+                  <span className="font-medium" style={{ color: 'var(--theme-text)' }}>
+                    ${currentSessionCost.toFixed(4)}
+                  </span>
                 </>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-1 text-gray-400">
+          <div className="flex items-center gap-1" style={{ color: 'var(--theme-text-muted)' }}>
             <Zap size={14} />
             <span>Total:</span>
-            <span className="text-white font-medium">{overallStats.totalTokens.toLocaleString()} tokens</span>
+            <span className="font-medium" style={{ color: 'var(--theme-text)' }}>
+              {overallStats.totalTokens.toLocaleString()} tokens
+            </span>
             {overallStats.totalCost > 0 && (
               <>
-                <span className="text-gray-500 mx-1">•</span>
+                <span className="mx-1 opacity-60">•</span>
                 <Coins size={14} />
-                <span className="text-white font-medium">${overallStats.totalCost.toFixed(4)}</span>
+                <span className="font-medium" style={{ color: 'var(--theme-text)' }}>
+                  ${overallStats.totalCost.toFixed(4)}
+                </span>
               </>
             )}
           </div>
@@ -301,7 +312,7 @@ export default function Chat({
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
-          <div className="text-center text-gray-500 mt-8">
+          <div className="text-center mt-8" style={{ color: 'var(--theme-text-muted)' }}>
             Start a conversation by typing a message below
           </div>
         )}
@@ -313,35 +324,44 @@ export default function Chat({
           >
             <div className="relative max-w-[80%]">
               <div
-                className={`rounded-lg p-3 pr-10 ${
-                  message.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-100'
-                }`}
+                className="rounded-lg p-3 pr-10"
+                style={{
+                  backgroundColor: message.role === 'user' ? 'var(--theme-user-bubble)' : 'var(--theme-assistant-bubble)',
+                  color: message.role === 'user' ? '#fff' : 'var(--theme-assistant-bubble-text)',
+                }}
               >
                 <div className="whitespace-pre-wrap">{message.content}</div>
               </div>
               <div className="absolute top-2 right-2 flex items-center gap-0.5">
                 <button
                   onClick={() => setOpenMenuId((id) => (id === message.id ? null : message.id))}
-                  className="p-1.5 rounded text-gray-400 hover:bg-gray-600/50 hover:text-gray-200 opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity"
+                  className="p-1.5 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity hover:opacity-100 hover:bg-[var(--theme-bg-panel-hover)]"
+                  style={{ color: 'var(--theme-text-muted)' }}
                   title="Message options"
                   aria-expanded={openMenuId === message.id}
                 >
                   <MoreVertical size={18} />
                 </button>
                 {openMenuId === message.id && (
-                  <div className="absolute right-0 top-full mt-1 py-1 w-56 rounded-lg bg-gray-800 border border-gray-600 shadow-xl z-10 origin-top-right">
+                  <div
+                    className="absolute right-0 top-full mt-1 py-1 w-56 rounded-lg shadow-xl z-10 origin-top-right border"
+                    style={{
+                      backgroundColor: 'var(--theme-stats-bg)',
+                      borderColor: 'var(--theme-border)',
+                    }}
+                  >
                     <button
                       onClick={() => handleDeleteMessage(message.id)}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 rounded-t-lg"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-t-lg transition-colors hover:bg-[var(--theme-bg-panel-hover)]"
+                      style={{ color: 'var(--theme-text)' }}
                     >
                       <Trash2 size={16} />
                       Delete this message
                     </button>
                     <button
                       onClick={() => handleDeleteMessageAndBelow(message.id)}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 rounded-b-lg"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm rounded-b-lg transition-colors hover:bg-[var(--theme-bg-panel-hover)]"
+                      style={{ color: 'var(--theme-text)' }}
                     >
                       <Trash2 size={16} />
                       Delete this and all below
@@ -354,14 +374,17 @@ export default function Chat({
         ))}
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-gray-800 rounded-lg p-3">
+            <div
+              className="rounded-lg p-3"
+              style={{ backgroundColor: 'var(--theme-assistant-bubble)', color: 'var(--theme-assistant-bubble-text)' }}
+            >
               <Loader2 className="animate-spin" size={20} />
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
-      <div className="border-t border-gray-700 p-4">
+      <div className="border-t p-4" style={{ borderColor: 'var(--theme-border)' }}>
         <div className="flex gap-2">
           <input
             type="text"
@@ -369,13 +392,19 @@ export default function Chat({
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
             placeholder="Type your message..."
-            className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+            className="flex-1 rounded-lg px-4 py-2 focus:outline-none focus:border-2 focus:border-[var(--theme-accent)] border"
+            style={{
+              backgroundColor: 'var(--theme-input-bg)',
+              borderColor: 'var(--theme-border)',
+              color: 'var(--theme-input-text)',
+            }}
             disabled={isLoading}
           />
           <button
             onClick={handleSend}
             disabled={isLoading || !input.trim()}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg flex items-center gap-2"
+            className="text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
+            style={{ backgroundColor: 'var(--theme-accent)' }}
           >
             <Send size={20} />
           </button>

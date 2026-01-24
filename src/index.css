@@ -8,14 +8,69 @@
   box-sizing: border-box;
 }
 
+/* Default theme (dark) */
+:root,
+[data-theme="default"] {
+  --theme-bg-app: #030712;
+  --theme-bg-header: #111827;
+  --theme-bg-panel: #111827;
+  --theme-bg-panel-hover: #1f2937;
+  --theme-border: #1f2937;
+  --theme-text: #ffffff;
+  --theme-text-muted: #9ca3af;
+  --theme-accent: #2563eb;
+  --theme-accent-hover: #1d4ed8;
+  --theme-user-bubble: #2563eb;
+  --theme-assistant-bubble: #1f2937;
+  --theme-assistant-bubble-text: #f3f4f6;
+  --theme-input-bg: #111827;
+  --theme-button-active-bg: #2563eb;
+  --theme-button-inactive-bg: #1f2937;
+  --theme-button-inactive-text: #9ca3af;
+  --theme-button-inactive-hover: #374151;
+  --theme-stats-bg: #111827;
+  --theme-delete-hover: #f87171;
+  --theme-conv-active-bg: rgba(37, 99, 235, 0.2);
+  --theme-conv-active-border: rgba(37, 99, 235, 0.5);
+  --theme-input-text: #f3f4f6;
+  --theme-placeholder: #6b7280;
+}
+
+/* iOS theme (light) */
+[data-theme="ios"] {
+  --theme-bg-app: #f2f2f7;
+  --theme-bg-header: #ffffff;
+  --theme-bg-panel: #ffffff;
+  --theme-bg-panel-hover: #e5e5ea;
+  --theme-border: #e5e5ea;
+  --theme-text: #000000;
+  --theme-text-muted: #8e8e93;
+  --theme-accent: #007aff;
+  --theme-accent-hover: #0051d5;
+  --theme-user-bubble: #007aff;
+  --theme-assistant-bubble: #e5e5ea;
+  --theme-assistant-bubble-text: #1c1c1e;
+  --theme-input-bg: #e5e5ea;
+  --theme-button-active-bg: #007aff;
+  --theme-button-inactive-bg: #e5e5ea;
+  --theme-button-inactive-text: #8e8e93;
+  --theme-button-inactive-hover: #d1d1d6;
+  --theme-stats-bg: #ffffff;
+  --theme-delete-hover: #ff3b30;
+  --theme-conv-active-bg: rgba(0, 122, 255, 0.12);
+  --theme-conv-active-border: rgba(0, 122, 255, 0.4);
+  --theme-input-text: #1c1c1e;
+  --theme-placeholder: #8e8e93;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #0a0a0a;
-  color: #e0e0e0;
+  background: var(--theme-bg-app);
+  color: var(--theme-text);
   height: 100vh;
   overflow: hidden;
 }
@@ -27,6 +82,10 @@ body {
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', 'Courier New', monospace;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--theme-placeholder);
 }

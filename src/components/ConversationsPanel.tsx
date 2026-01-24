@@ -27,13 +27,19 @@ export default function ConversationsPanel({
   onDelete,
 }: ConversationsPanelProps) {
   return (
-    <div className="h-full flex flex-col bg-gray-900 border-r border-gray-700">
-      <div className="p-4 border-b border-gray-700">
+    <div
+      className="h-full flex flex-col border-r"
+      style={{ backgroundColor: 'var(--theme-bg-panel)', borderColor: 'var(--theme-border)' }}
+    >
+      <div className="p-4 border-b" style={{ borderColor: 'var(--theme-border)' }}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">Conversations</h2>
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--theme-text)' }}>
+            Conversations
+          </h2>
           <button
             onClick={onNew}
-            className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg flex items-center gap-1.5"
+            className="text-white p-2 rounded-lg flex items-center gap-1.5 transition-colors hover:opacity-90"
+            style={{ backgroundColor: 'var(--theme-accent)' }}
             title="New conversation"
           >
             <MessageSquarePlus size={18} />
@@ -43,25 +49,27 @@ export default function ConversationsPanel({
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {conversations.length === 0 && (
-          <div className="text-gray-500 text-sm text-center mt-6 px-2">
+          <div className="text-sm text-center mt-6 px-2" style={{ color: 'var(--theme-text-muted)' }}>
             No conversations yet. Start one with &quot;New&quot;.
           </div>
         )}
         {conversations.map((conv) => (
           <div
             key={conv.id}
-            className={`group flex items-center gap-2 rounded-lg px-3 py-2.5 cursor-pointer transition-colors ${
-              activeId === conv.id
-                ? 'bg-blue-600/20 border border-blue-500/50'
-                : 'border border-transparent hover:bg-gray-800 hover:border-gray-600'
+            className={`group flex items-center gap-2 rounded-lg px-3 py-2.5 cursor-pointer transition-colors border ${
+              activeId !== conv.id ? 'hover:bg-[var(--theme-bg-panel-hover)]' : ''
             }`}
+            style={{
+              backgroundColor: activeId === conv.id ? 'var(--theme-conv-active-bg)' : 'transparent',
+              borderColor: activeId === conv.id ? 'var(--theme-conv-active-border)' : 'transparent',
+            }}
             onClick={() => onSelect(conv.id)}
           >
             <div className="flex-1 min-w-0">
-              <div className="font-medium text-white text-sm truncate">
+              <div className="font-medium text-sm truncate" style={{ color: 'var(--theme-text)' }}>
                 {conv.title}
               </div>
-              <div className="text-gray-500 text-xs mt-0.5">
+              <div className="text-xs mt-0.5" style={{ color: 'var(--theme-text-muted)' }}>
                 {formatDate(conv.updatedAt)}
               </div>
             </div>
@@ -70,7 +78,8 @@ export default function ConversationsPanel({
                 e.stopPropagation();
                 onDelete(conv.id);
               }}
-              className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 p-1.5 rounded transition-opacity"
+              className="opacity-0 group-hover:opacity-100 p-1.5 rounded transition-opacity"
+              style={{ color: 'var(--theme-delete-hover)' }}
               title="Delete conversation"
             >
               <Trash2 size={16} />

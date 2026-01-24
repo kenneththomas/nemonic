@@ -11,6 +11,8 @@ import {
   loadSelectedDocuments,
   saveSelectedDocuments,
   loadModel,
+  loadTheme,
+  saveTheme,
   ensureConversationsInitialized,
   loadConversations,
   getActiveConversationId,
@@ -21,6 +23,8 @@ import {
   saveMessagesForConversation,
   updateConversation,
 } from './services/storage';
+import type { ThemeId } from './services/storage';
+import ThemesPanel from './components/ThemesPanel';
 
 const MAX_TITLE_LENGTH = 45;
 
@@ -31,6 +35,8 @@ function App() {
   const [showMemoryPanel, setShowMemoryPanel] = useState(true);
   const [showDocumentsPanel, setShowDocumentsPanel] = useState(true);
   const [showConversationsPanel, setShowConversationsPanel] = useState(true);
+  const [showThemesPanel, setShowThemesPanel] = useState(false);
+  const [theme, setThemeState] = useState<ThemeId>(loadTheme());
 
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
   const [activeConversationId, setActiveConversationIdState] = useState<string | null>(() =>
@@ -43,6 +49,11 @@ function App() {
     setConversations(loadConversations());
     setActiveConversationIdState(getActiveConversationId());
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    saveTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -111,37 +122,69 @@ function App() {
   );
 
   return (
-    <div className="h-screen flex flex-col bg-gray-950">
-      <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-white">Nemonic</h1>
+    <div
+      className="h-screen flex flex-col"
+      style={{ backgroundColor: 'var(--theme-bg-app)' }}
+    >
+      <header
+        className="border-b px-4 py-3 flex items-center justify-between"
+        style={{
+          backgroundColor: 'var(--theme-bg-header)',
+          borderColor: 'var(--theme-border)',
+        }}
+      >
+        <h1
+          className="text-xl font-bold"
+          style={{ color: 'var(--theme-text)' }}
+        >
+          Nemonic
+        </h1>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowThemesPanel(!showThemesPanel)}
+            className="px-3 py-1 rounded-lg text-sm transition-colors hover:opacity-90"
+            style={{
+              backgroundColor: showThemesPanel
+                ? 'var(--theme-button-active-bg)'
+                : 'var(--theme-button-inactive-bg)',
+              color: showThemesPanel ? '#fff' : 'var(--theme-button-inactive-text)',
+            }}
+          >
+            Themes
+          </button>
+          <button
             onClick={() => setShowConversationsPanel(!showConversationsPanel)}
-            className={`px-3 py-1 rounded text-sm ${
-              showConversationsPanel
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
+            className="px-3 py-1 rounded-lg text-sm transition-colors hover:opacity-90"
+            style={{
+              backgroundColor: showConversationsPanel
+                ? 'var(--theme-button-active-bg)'
+                : 'var(--theme-button-inactive-bg)',
+              color: showConversationsPanel ? '#fff' : 'var(--theme-button-inactive-text)',
+            }}
           >
             Conversations
           </button>
           <button
             onClick={() => setShowMemoryPanel(!showMemoryPanel)}
-            className={`px-3 py-1 rounded text-sm ${
-              showMemoryPanel
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
+            className="px-3 py-1 rounded-lg text-sm transition-colors hover:opacity-90"
+            style={{
+              backgroundColor: showMemoryPanel
+                ? 'var(--theme-button-active-bg)'
+                : 'var(--theme-button-inactive-bg)',
+              color: showMemoryPanel ? '#fff' : 'var(--theme-button-inactive-text)',
+            }}
           >
             Memories
           </button>
           <button
             onClick={() => setShowDocumentsPanel(!showDocumentsPanel)}
-            className={`px-3 py-1 rounded text-sm ${
-              showDocumentsPanel
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
+            className="px-3 py-1 rounded-lg text-sm transition-colors hover:opacity-90"
+            style={{
+              backgroundColor: showDocumentsPanel
+                ? 'var(--theme-button-active-bg)'
+                : 'var(--theme-button-inactive-bg)',
+              color: showDocumentsPanel ? '#fff' : 'var(--theme-button-inactive-text)',
+            }}
           >
             Documents
           </button>
@@ -187,6 +230,11 @@ function App() {
               selectedDocuments={selectedDocuments}
               onSelectionChange={setSelectedDocuments}
             />
+          </div>
+        )}
+        {showThemesPanel && (
+          <div className="w-64 flex-shrink-0">
+            <ThemesPanel theme={theme} onThemeChange={setThemeState} />
           </div>
         )}
       </div>

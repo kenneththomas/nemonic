@@ -13,7 +13,20 @@ const STORAGE_KEYS = {
   CONVERSATIONS: 'nemonic_conversations',
   ACTIVE_CONVERSATION_ID: 'nemonic_active_conversation_id',
   CONVERSATION_MESSAGES: 'nemonic_conversation_messages',
+  THEME: 'nemonic_theme',
 };
+
+export type ThemeId = 'default' | 'ios';
+
+export function loadTheme(): ThemeId {
+  const t = localStorage.getItem(STORAGE_KEYS.THEME);
+  if (t === 'ios' || t === 'default') return t;
+  return 'default';
+}
+
+export function saveTheme(theme: ThemeId): void {
+  localStorage.setItem(STORAGE_KEYS.THEME, theme);
+}
 
 export function saveMessages(messages: Message[]): void {
   localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
