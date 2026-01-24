@@ -131,6 +131,11 @@ export default function Chat({
     setInput('');
     onInputChange?.('');
     setIsLoading(true);
+    
+    // Keep focus on textarea after sending
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 0);
 
     try {
       const apiKey = loadAPIKey();
@@ -420,7 +425,7 @@ export default function Chat({
             }}
             placeholder="Type your message..."
             rows={1}
-            className="flex-1 rounded-lg px-4 py-2 focus:outline-none focus:border-2 focus:border-[var(--theme-accent)] border resize-none min-h-[42px] max-h-[200px] overflow-y-auto"
+            className="flex-1 rounded-lg px-4 py-2 focus:outline-none focus:border-2 focus:border-[var(--theme-accent)] border resize-none min-h-[42px] max-h-[200px] overflow-y-auto scrollbar-hide"
             style={{
               backgroundColor: 'var(--theme-input-bg)',
               borderColor: 'var(--theme-border)',
@@ -433,6 +438,10 @@ export default function Chat({
             disabled={isLoading || !input.trim()}
             className="text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
             style={{ backgroundColor: 'var(--theme-accent)' }}
+            onMouseDown={(e) => {
+              // Prevent button from taking focus away from textarea
+              e.preventDefault();
+            }}
           >
             <Send size={20} />
           </button>
