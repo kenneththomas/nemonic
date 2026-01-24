@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Loader2, Coins, Zap } from 'lucide-react';
+import { Send, Loader2, Coins, Zap, MoreVertical, Trash2 } from 'lucide-react';
 import { Message } from '../types';
 import { chatWithOpenRouter, OpenRouterMessage } from '../services/openrouter';
 import { loadAPIKey, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage } from '../services/storage';
@@ -27,7 +27,9 @@ export default function Chat({
   const [currentSessionTokens, setCurrentSessionTokens] = useState(0);
   const [currentSessionCost, setCurrentSessionCost] = useState(0);
   const [modelPricing, setModelPricing] = useState<{ prompt: number; completion: number } | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -231,6 +233,38 @@ export default function Chat({
     setCurrentSessionCost(0);
   }, [conversationId]);
 
+  // Close message menu on click outside
+  useEffect(() => {
+    if (openMenuId === null) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openMenuId]);
+
+  const handleDeleteMessage = useCallback(
+    (messageId: string) => {
+      setOpenMenuId(null);
+      onMessagesChange((prev) => prev.filter((m) => m.id !== messageId));
+    },
+    [onMessagesChange]
+  );
+
+  const handleDeleteMessageAndBelow = useCallback(
+    (messageId: string) => {
+      setOpenMenuId(null);
+      onMessagesChange((prev) => {
+        const idx = prev.findIndex((m) => m.id === messageId);
+        if (idx === -1) return prev;
+        return prev.slice(0, idx);
+      });
+    },
+    [onMessagesChange]
+  );
+
   return (
     <div className="flex flex-col h-full">
       {/* Stats Bar */}
@@ -274,18 +308,47 @@ export default function Chat({
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex ${
-              message.role === 'user' ? 'justify-end' : 'justify-start'
-            }`}
+            ref={openMenuId === message.id ? menuRef : undefined}
+            className={`group flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
-            <div
-              className={`max-w-[80%] rounded-lg p-3 ${
-                message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-800 text-gray-100'
-              }`}
-            >
-              <div className="whitespace-pre-wrap">{message.content}</div>
+            <div className="relative max-w-[80%]">
+              <div
+                className={`rounded-lg p-3 pr-10 ${
+                  message.role === 'user'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-800 text-gray-100'
+                }`}
+              >
+                <div className="whitespace-pre-wrap">{message.content}</div>
+              </div>
+              <div className="absolute top-2 right-2 flex items-center gap-0.5">
+                <button
+                  onClick={() => setOpenMenuId((id) => (id === message.id ? null : message.id))}
+                  className="p-1.5 rounded text-gray-400 hover:bg-gray-600/50 hover:text-gray-200 opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none transition-opacity"
+                  title="Message options"
+                  aria-expanded={openMenuId === message.id}
+                >
+                  <MoreVertical size={18} />
+                </button>
+                {openMenuId === message.id && (
+                  <div className="absolute right-0 top-full mt-1 py-1 w-56 rounded-lg bg-gray-800 border border-gray-600 shadow-xl z-10 origin-top-right">
+                    <button
+                      onClick={() => handleDeleteMessage(message.id)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 rounded-t-lg"
+                    >
+                      <Trash2 size={16} />
+                      Delete this message
+                    </button>
+                    <button
+                      onClick={() => handleDeleteMessageAndBelow(message.id)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 rounded-b-lg"
+                    >
+                      <Trash2 size={16} />
+                      Delete this and all below
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
