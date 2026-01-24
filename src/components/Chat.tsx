@@ -30,10 +30,20 @@ export default function Chat({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Auto-resize textarea as user types
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const h = Math.max(42, Math.min(el.scrollHeight, 200));
+    el.style.height = `${h}px`;
+  }, [input]);
 
   // Calculate cost helper function
   const calculateCost = useCallback((promptTokens: number, completionTokens: number, pricing?: { prompt: number; completion: number }) => {
@@ -385,14 +395,20 @@ export default function Chat({
         <div ref={messagesEndRef} />
       </div>
       <div className="border-t p-4" style={{ borderColor: 'var(--theme-border)' }}>
-        <div className="flex gap-2">
-          <input
-            type="text"
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder="Type your message..."
-            className="flex-1 rounded-lg px-4 py-2 focus:outline-none focus:border-2 focus:border-[var(--theme-accent)] border"
+            rows={1}
+            className="flex-1 rounded-lg px-4 py-2 focus:outline-none focus:border-2 focus:border-[var(--theme-accent)] border resize-none min-h-[42px] max-h-[200px] overflow-y-auto"
             style={{
               backgroundColor: 'var(--theme-input-bg)',
               borderColor: 'var(--theme-border)',
