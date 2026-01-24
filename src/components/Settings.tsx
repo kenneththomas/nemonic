@@ -45,7 +45,12 @@ export default function Settings({ onModelChange }: SettingsProps) {
 
   useEffect(() => {
     if (isOpen) {
-      // Try to load models immediately when settings open
+      // Reset form state from storage when opening (so Cancel properly discards)
+      setApiKey(loadAPIKey());
+      setModel(loadModel());
+      setSystemPrompt(loadSystemPrompt());
+      setLlmSettings(loadLLMSettings());
+      setUsageData(loadModelUsage());
       loadAvailableModels();
       refreshUsageData();
     }
@@ -58,12 +63,16 @@ export default function Settings({ onModelChange }: SettingsProps) {
     }
   }, [apiKey, isOpen, hasLoadedModels, loadAvailableModels]);
 
-  const handleSave = () => {
+  const handleExit = () => {
     saveAPIKey(apiKey);
     saveModel(model);
     saveSystemPrompt(systemPrompt);
     saveLLMSettings(llmSettings);
     onModelChange(model);
+    setIsOpen(false);
+  };
+
+  const handleCancel = () => {
     setIsOpen(false);
   };
 
@@ -166,8 +175,9 @@ export default function Settings({ onModelChange }: SettingsProps) {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-white">Settings</h2>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={handleExit}
                 className="text-gray-400 hover:text-white"
+                title="Close and save"
               >
                 <X size={24} />
               </button>
@@ -495,16 +505,10 @@ export default function Settings({ onModelChange }: SettingsProps) {
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex justify-end">
                 <button
-                  onClick={handleSave}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
+                  onClick={handleCancel}
+                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
                 >
                   Cancel
                 </button>
