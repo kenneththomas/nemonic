@@ -47,12 +47,23 @@ export default function Chat({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const streamIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const streamBufferRef = useRef<{ buffer: string; displayed: string; messageId: string; updateFn: (content: string) => void } | null>(null);
+  const streamContentRef = useRef<{ content: string; messageId: string; updateFn: (content: string) => void } | null>(null);
+  const shouldAutoScrollRef = useRef<boolean>(false);
+  const prevMessagesLengthRef = useRef<number>(0);
 
+  // Only auto-scroll when streaming completes or when new messages are added (not during streaming)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingMessageId]);
+    const isNewMessage = messages.length > prevMessagesLengthRef.current;
+    prevMessagesLengthRef.current = messages.length;
+    
+    if (!streamingMessageId) {
+      // Scroll when streaming completes or when a new message is added
+      if (shouldAutoScrollRef.current || isNewMessage) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        shouldAutoScrollRef.current = false;
+      }
+    }
+  }, [streamingMessageId, messages.length]);
 
   // Auto-resize textarea as user types
   useEffect(() => {
@@ -224,38 +235,18 @@ export default function Chat({
         }
       }
 
-      const STREAM_WORD_DELAY_MS = 45;
-
       const updateMessageContent = (content: string) => {
         onMessagesChange((prev) =>
           prev.map((msg) => (msg.id === assistantMessageId ? { ...msg, content } : msg))
         );
       };
-      
-      const clearStreamInterval = () => {
-        if (streamIntervalRef.current != null) {
-          clearInterval(streamIntervalRef.current);
-          streamIntervalRef.current = null;
-        }
-      };
 
       // Store stream state in refs for stop handler access
-      streamBufferRef.current = {
-        buffer: '',
-        displayed: '',
+      streamContentRef.current = {
+        content: '',
         messageId: assistantMessageId,
         updateFn: updateMessageContent,
       };
-
-      streamIntervalRef.current = setInterval(() => {
-        if (!streamBufferRef.current) return;
-        const match = streamBufferRef.current.buffer.match(/^(\s*\S+\s)/);
-        if (!match) return;
-        const word = match[1];
-        streamBufferRef.current.buffer = streamBufferRef.current.buffer.slice(word.length);
-        streamBufferRef.current.displayed += word;
-        streamBufferRef.current.updateFn(streamBufferRef.current.displayed);
-      }, STREAM_WORD_DELAY_MS);
 
       const { online_search: _online, max_messages: _maxMsgs, ...apiLlmSettings } = llmSettings;
       
@@ -269,21 +260,17 @@ export default function Chat({
           { model: effectiveModel, messages: allMessages, ...apiLlmSettings },
           {
             onChunk: (c) => { 
-              if (streamBufferRef.current) {
-                streamBufferRef.current.buffer += c;
+              if (streamContentRef.current) {
+                streamContentRef.current.content += c;
+                streamContentRef.current.updateFn(streamContentRef.current.content);
               }
             },
             onComplete: (usage) => {
-              clearStreamInterval();
-              if (streamBufferRef.current) {
-                if (streamBufferRef.current.buffer.length > 0) {
-                  streamBufferRef.current.displayed += streamBufferRef.current.buffer;
-                  streamBufferRef.current.updateFn(streamBufferRef.current.displayed);
-                  streamBufferRef.current.buffer = '';
-                }
-                streamBufferRef.current = null;
+              if (streamContentRef.current) {
+                streamContentRef.current = null;
               }
               setStreamingMessageId(null);
+              shouldAutoScrollRef.current = true;
               abortControllerRef.current = null;
               const promptTokens = usage.prompt_tokens || 0;
               const completionTokens = usage.completion_tokens || 0;
@@ -304,9 +291,8 @@ export default function Chat({
               setCurrentSessionCost((prev) => prev + cost);
             },
             onError: (error) => {
-              clearStreamInterval();
-              if (streamBufferRef.current) {
-                streamBufferRef.current = null;
+              if (streamContentRef.current) {
+                streamContentRef.current = null;
               }
               setStreamingMessageId(null);
               abortControllerRef.current = null;
@@ -325,9 +311,8 @@ export default function Chat({
           abortController.signal
         );
       } finally {
-        clearStreamInterval();
-        if (streamBufferRef.current) {
-          streamBufferRef.current = null;
+        if (streamContentRef.current) {
+          streamContentRef.current = null;
         }
         abortControllerRef.current = null;
       }
@@ -526,19 +511,9 @@ export default function Chat({
 
   const handleStop = useCallback(() => {
     if (abortControllerRef.current) {
-      // Clear the stream interval
-      if (streamIntervalRef.current) {
-        clearInterval(streamIntervalRef.current);
-        streamIntervalRef.current = null;
-      }
-      
-      // Finalize any remaining buffer content
-      if (streamBufferRef.current) {
-        if (streamBufferRef.current.buffer.length > 0) {
-          streamBufferRef.current.displayed += streamBufferRef.current.buffer;
-          streamBufferRef.current.updateFn(streamBufferRef.current.displayed);
-        }
-        streamBufferRef.current = null;
+      // Finalize any remaining content
+      if (streamContentRef.current) {
+        streamContentRef.current = null;
       }
       
       // Abort the fetch request
@@ -720,25 +695,7 @@ export default function Chat({
                 >
                   {streamingMessageId === message.id && message.role === 'assistant' ? (
                     <div className="whitespace-pre-wrap streaming-text">
-                      {message.content.split(/(\s+)/).map((part, idx) => {
-                        // Preserve whitespace exactly as is
-                        if (/^\s+$/.test(part)) {
-                          return <span key={idx}>{part}</span>;
-                        }
-                        // Animate words with a slight delay based on position for cascading effect
-                        const wordIndex = Math.floor(idx / 2); // Account for whitespace parts
-                        return (
-                          <span 
-                            key={idx} 
-                            className="streaming-word"
-                            style={{
-                              animationDelay: `${Math.min(wordIndex * 0.02, 0.25)}s`
-                            }}
-                          >
-                            {part}
-                          </span>
-                        );
-                      })}
+                      {message.content}
                     </div>
                   ) : message.role === 'assistant' ? (
                     <div className="chat-markdown">
