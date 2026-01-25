@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Loader2, Coins, Zap, MoreVertical, Trash2, RotateCw, RefreshCw, Edit, Check, X, Square } from 'lucide-react';
+import { Send, Loader2, Coins, Zap, MoreVertical, Trash2, RotateCw, RefreshCw, Edit, Check, X, Square, Download } from 'lucide-react';
 import { Message } from '../types';
 import { chatWithOpenRouterStream, getModels, OpenRouterMessage } from '../services/openrouter';
 import { loadAPIKey, loadDocuments, loadMemories, loadSystemPrompt, trackModelUsage, loadModelUsage, loadLLMSettings, incrementMemoryUseCount } from '../services/storage';
@@ -15,6 +15,7 @@ interface ChatProps {
   selectedMemories: string[];
   selectedDocuments: string[];
   model: string;
+  conversationTitle?: string;
   onInputChange?: (value: string) => void;
   onMemoriesUsed?: () => void;
 }
@@ -26,6 +27,7 @@ export default function Chat({
   selectedMemories,
   selectedDocuments,
   model,
+  conversationTitle,
   onInputChange,
   onMemoriesUsed,
 }: ChatProps) {
@@ -547,6 +549,38 @@ export default function Chat({
     }
   }, []);
 
+  const handleExportMarkdown = useCallback(() => {
+    const filtered = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
+    if (filtered.length === 0) return;
+
+    const title = conversationTitle || 'Chat export';
+    const exportedAt = new Date().toISOString();
+    const lines: string[] = [
+      `# ${title}`,
+      '',
+      `*Exported ${exportedAt}*`,
+      '',
+    ];
+    for (const m of filtered) {
+      const heading = m.role === 'user' ? '## User' : '## Assistant';
+      lines.push(heading);
+      lines.push('');
+      lines.push(m.content.trim());
+      lines.push('');
+    }
+
+    const md = lines.join('\n').trimEnd();
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeTitle = title.replace(/[<>:"/\\|?*]/g, '-').slice(0, 80) || 'chat';
+    const date = new Date().toISOString().slice(0, 10);
+    a.download = `${safeTitle}-${date}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [messages, conversationTitle]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Stats Bar */}
@@ -573,21 +607,36 @@ export default function Chat({
               )}
             </div>
           </div>
-          <div className="flex items-center gap-1" style={{ color: 'var(--theme-text-muted)' }}>
-            <Zap size={14} />
-            <span>Total:</span>
-            <span className="font-medium" style={{ color: 'var(--theme-text)' }}>
-              {overallStats.totalTokens.toLocaleString()} tokens
-            </span>
-            {overallStats.totalCost > 0 && (
-              <>
-                <span className="mx-1 opacity-60">•</span>
-                <Coins size={14} />
-                <span className="font-medium" style={{ color: 'var(--theme-text)' }}>
-                  ${overallStats.totalCost.toFixed(4)}
-                </span>
-              </>
-            )}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1" style={{ color: 'var(--theme-text-muted)' }}>
+              <Zap size={14} />
+              <span>Total:</span>
+              <span className="font-medium" style={{ color: 'var(--theme-text)' }}>
+                {overallStats.totalTokens.toLocaleString()} tokens
+              </span>
+              {overallStats.totalCost > 0 && (
+                <>
+                  <span className="mx-1 opacity-60">•</span>
+                  <Coins size={14} />
+                  <span className="font-medium" style={{ color: 'var(--theme-text)' }}>
+                    ${overallStats.totalCost.toFixed(4)}
+                  </span>
+                </>
+              )}
+            </div>
+            <button
+              onClick={handleExportMarkdown}
+              disabled={messages.length === 0}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: 'var(--theme-button-inactive-bg)',
+                color: 'var(--theme-button-inactive-text)',
+              }}
+              title="Export chat as Markdown"
+            >
+              <Download size={14} />
+              Export as MD
+            </button>
           </div>
         </div>
       </div>

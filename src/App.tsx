@@ -96,6 +96,11 @@ function App() {
     [conversations]
   );
 
+  const activeConversationTitle = useMemo(() => {
+    const c = sortedConversations.find((x) => x.id === activeConversationId);
+    return c?.title ?? undefined;
+  }, [sortedConversations, activeConversationId]);
+
   const handleMessagesChange = useCallback(
     (next: Message[] | ((prev: Message[]) => Message[])) => {
       setMessages((prev) => {
@@ -236,6 +241,7 @@ function App() {
             selectedMemories={selectedMemories}
             selectedDocuments={selectedDocuments}
             model={model}
+            conversationTitle={activeConversationTitle}
             onInputChange={setChatInput}
             onMemoriesUsed={() => setMemoryUsageVersion((v) => v + 1)}
           />
