@@ -69,12 +69,31 @@ export default function MemoryPanel({
 
   const sortedMemories = useMemo(() => {
     const byUse = (a: Memory, b: Memory) => (b.useCount ?? 0) - (a.useCount ?? 0);
-    const triggered = memories.filter((m) => triggeredIds.has(m.id));
-    const rest = memories.filter((m) => !triggeredIds.has(m.id));
-    triggered.sort(byUse);
-    rest.sort(byUse);
-    return [...triggered, ...rest];
-  }, [memories, triggeredIds]);
+    const selectedSet = new Set(selectedMemories);
+    
+    // Separate into selected and non-selected
+    const selected = memories.filter((m) => selectedSet.has(m.id));
+    const notSelected = memories.filter((m) => !selectedSet.has(m.id));
+    
+    // Within selected: triggered first, then by useCount
+    const selectedTriggered = selected.filter((m) => triggeredIds.has(m.id));
+    const selectedRest = selected.filter((m) => !triggeredIds.has(m.id));
+    selectedTriggered.sort(byUse);
+    selectedRest.sort(byUse);
+    
+    // Within not-selected: triggered first, then by useCount
+    const notSelectedTriggered = notSelected.filter((m) => triggeredIds.has(m.id));
+    const notSelectedRest = notSelected.filter((m) => !triggeredIds.has(m.id));
+    notSelectedTriggered.sort(byUse);
+    notSelectedRest.sort(byUse);
+    
+    return [
+      ...selectedTriggered,
+      ...selectedRest,
+      ...notSelectedTriggered,
+      ...notSelectedRest,
+    ];
+  }, [memories, triggeredIds, selectedMemories]);
 
   const prevTriggeredRef = useRef<Set<string>>(new Set());
   useEffect(() => {

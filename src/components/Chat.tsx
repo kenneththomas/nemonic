@@ -39,9 +39,11 @@ export default function Chat({
   const [rerunWithModelMessageId, setRerunWithModelMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState<string>('');
+  const [usageVersion, setUsageVersion] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamBufferRef = useRef<{ buffer: string; displayed: string; messageId: string; updateFn: (content: string) => void } | null>(null);
@@ -58,6 +60,19 @@ export default function Chat({
     const h = Math.max(42, Math.min(el.scrollHeight, 200));
     el.style.height = `${h}px`;
   }, [input]);
+
+  // Auto-resize edit textarea to match message size (same typography as message bubbles)
+  useEffect(() => {
+    const el = editTextareaRef.current;
+    if (!el || !editingMessageId) return;
+    el.style.overflow = 'hidden';
+    el.style.height = '0';
+    const minH = 120;
+    const maxH = Math.max(400, Math.min(500, window.innerHeight * 0.5));
+    const h = Math.max(minH, Math.min(maxH, el.scrollHeight));
+    el.style.height = `${h}px`;
+    el.style.overflow = 'auto';
+  }, [editingMessageId, editContent]);
 
   // Calculate cost helper function
   const calculateCost = useCallback((promptTokens: number, completionTokens: number, pricing?: { prompt: number; completion: number }) => {
@@ -95,7 +110,7 @@ export default function Chat({
     loadPricing();
   }, [model]);
 
-  // Calculate overall stats
+  // Calculate overall stats (usageVersion forces refresh when we track new usage)
   const overallStats = useMemo(() => {
     const usage = loadModelUsage();
     let totalTokens = 0;
@@ -123,7 +138,7 @@ export default function Chat({
     });
     
     return { totalTokens, totalCost };
-  }, [calculateCost]);
+  }, [calculateCost, usageVersion]);
 
   const executeCompletion = useCallback(
     async (
@@ -279,6 +294,7 @@ export default function Chat({
                 completionTokens,
                 pricingToStore
               );
+              setUsageVersion((v) => v + 1);
               setCurrentSessionTokens((prev) => prev + totalTokens);
               const cost = pricingToStore
                 ? calculateCost(promptTokens, completionTokens, pricingToStore)
@@ -598,6 +614,7 @@ export default function Chat({
                   }}
                 >
                   <textarea
+                    ref={editTextareaRef}
                     value={editContent}
                     onChange={(e) => setEditContent(e.target.value)}
                     onKeyDown={(e) => {
@@ -609,7 +626,7 @@ export default function Chat({
                         handleCancelEdit();
                       }
                     }}
-                    className="w-full min-h-[60px] p-2 rounded resize-none focus:outline-none focus:ring-2 focus:ring-opacity-50"
+                    className="w-full min-h-[120px] p-3 rounded resize-none overflow-y-auto scrollbar-hide focus:outline-none focus:ring-2 focus:ring-opacity-50 text-[0.9375rem] leading-[1.6] whitespace-pre-wrap"
                     style={{
                       backgroundColor: message.role === 'user' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
                       color: message.role === 'user' ? '#fff' : 'var(--theme-assistant-bubble-text)',
