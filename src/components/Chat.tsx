@@ -42,6 +42,7 @@ export default function Chat({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState<string>('');
   const [usageVersion, setUsageVersion] = useState(0);
+  const [comparingMessages, setComparingMessages] = useState<{ oldId: string; newId: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -396,6 +397,11 @@ export default function Chat({
       setOpenMenuId(null);
       setRerunWithModelMessageId(null);
 
+      // Check if there's an existing assistant message after this user message
+      const nextMessage = messages[idx + 1];
+      const hasExistingAssistant = nextMessage?.role === 'assistant';
+      const oldAssistantId = hasExistingAssistant ? nextMessage.id : null;
+
       const trimmed = messages.slice(0, idx + 1);
       const assistantMessageId = (Date.now() + 1).toString();
       const assistantMessage: Message = {
@@ -404,7 +410,14 @@ export default function Chat({
         content: '',
         timestamp: Date.now(),
       };
-      onMessagesChange(() => [...trimmed, assistantMessage]);
+      
+      // If there's an existing assistant message, keep it for comparison
+      if (hasExistingAssistant && oldAssistantId) {
+        onMessagesChange(() => [...trimmed, messages[idx + 1], assistantMessage]);
+      } else {
+        onMessagesChange(() => [...trimmed, assistantMessage]);
+      }
+      
       setStreamingMessageId(assistantMessageId);
       setIsLoading(true);
 
@@ -416,6 +429,11 @@ export default function Chat({
           assistantMessageId,
           true
         );
+        
+        // After completion, if there was an existing assistant message, enable comparison mode
+        if (hasExistingAssistant && oldAssistantId) {
+          setComparingMessages({ oldId: oldAssistantId, newId: assistantMessageId });
+        }
       } catch (error: unknown) {
         const err = error instanceof Error ? error : new Error('Unknown error');
         setStreamingMessageId(null);
@@ -508,6 +526,20 @@ export default function Chat({
     setEditingMessageId(null);
     setEditContent('');
   }, []);
+
+  const handleSelectMessage = useCallback(
+    (messageIdToKeep: string) => {
+      if (!comparingMessages) return;
+      
+      const messageToRemove = messageIdToKeep === comparingMessages.oldId 
+        ? comparingMessages.newId 
+        : comparingMessages.oldId;
+      
+      onMessagesChange((prev) => prev.filter((m) => m.id !== messageToRemove));
+      setComparingMessages(null);
+    },
+    [comparingMessages, onMessagesChange]
+  );
 
   const handleStop = useCallback(() => {
     if (abortControllerRef.current) {
@@ -617,18 +649,53 @@ export default function Chat({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {comparingMessages && (
+          <div 
+            className="mx-auto max-w-4xl mb-4 p-3 rounded-lg border-2 flex items-center justify-between"
+            style={{
+              backgroundColor: 'var(--theme-stats-bg)',
+              borderColor: 'var(--theme-accent)',
+            }}
+          >
+            <div className="flex items-center gap-2" style={{ color: 'var(--theme-text)' }}>
+              <RefreshCw size={18} className="animate-spin" />
+              <span className="font-medium">Compare responses: Select which version to keep</span>
+            </div>
+            <button
+              onClick={() => {
+                // Cancel comparison: remove the new message, keep the old one
+                onMessagesChange((prev) => prev.filter((m) => m.id !== comparingMessages.newId));
+                setComparingMessages(null);
+              }}
+              className="px-3 py-1.5 rounded text-sm font-medium transition-colors hover:opacity-90"
+              style={{
+                backgroundColor: 'var(--theme-button-inactive-bg)',
+                color: 'var(--theme-button-inactive-text)',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
         {messages.length === 0 && (
           <div className="text-center mt-8" style={{ color: 'var(--theme-text-muted)' }}>
             Start a conversation by typing a message below
           </div>
         )}
-        {messages.map((message) => (
+        {messages.map((message) => {
+          const isInComparison = comparingMessages && 
+            (message.id === comparingMessages.oldId || message.id === comparingMessages.newId);
+          const isOldMessage = comparingMessages && message.id === comparingMessages.oldId;
+          
+          return (
           <div
             key={message.id}
             ref={openMenuId === message.id ? menuRef : undefined}
-            className={`group flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`group flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} ${
+              isInComparison ? 'mb-2' : ''
+            }`}
           >
-            <div className="relative max-w-[80%]">
+            <div className={`relative ${editingMessageId === message.id ? 'max-w-[95%] w-full' : 'max-w-[80%]'}`}>
               {editingMessageId === message.id ? (
                 <div
                   className="rounded-lg p-3"
@@ -685,14 +752,24 @@ export default function Chat({
                 </div>
               ) : (
                 <div
-                  className={`rounded-lg p-3 pr-10 ${
+                  className={`rounded-lg p-3 ${isInComparison ? 'pr-3' : 'pr-10'} ${
                     streamingMessageId === message.id ? 'streaming-bubble' : ''
-                  }`}
+                  } ${isInComparison ? 'border-2' : ''}`}
                   style={{
                     backgroundColor: message.role === 'user' ? 'var(--theme-user-bubble)' : 'var(--theme-assistant-bubble)',
                     color: message.role === 'user' ? '#fff' : 'var(--theme-assistant-bubble-text)',
+                    borderColor: isInComparison 
+                      ? (isOldMessage ? 'rgba(59, 130, 246, 0.5)' : 'rgba(34, 197, 94, 0.5)')
+                      : 'transparent',
                   }}
                 >
+                  {isInComparison && message.role === 'assistant' && (
+                    <div className="mb-2 pb-2 border-b" style={{ borderColor: 'rgba(255, 255, 255, 0.2)' }}>
+                      <div className="text-xs font-semibold opacity-80">
+                        {isOldMessage ? 'Original Response' : 'New Response'}
+                      </div>
+                    </div>
+                  )}
                   {streamingMessageId === message.id && message.role === 'assistant' ? (
                     <div className="whitespace-pre-wrap streaming-text">
                       {message.content}
@@ -704,9 +781,26 @@ export default function Chat({
                   ) : (
                     <div className="whitespace-pre-wrap">{message.content}</div>
                   )}
+                  {isInComparison && message.role === 'assistant' && !streamingMessageId && (
+                    <div className="mt-3 pt-2 border-t" style={{ borderColor: 'rgba(255, 255, 255, 0.2)' }}>
+                      <button
+                        onClick={() => handleSelectMessage(message.id)}
+                        className="w-full px-3 py-2 rounded text-sm font-medium transition-colors hover:opacity-90"
+                        style={{
+                          backgroundColor: isOldMessage 
+                            ? 'rgba(59, 130, 246, 0.3)' 
+                            : 'rgba(34, 197, 94, 0.3)',
+                          color: '#fff',
+                        }}
+                      >
+                        <Check size={16} className="inline mr-1.5" />
+                        Keep this one
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
-              {editingMessageId !== message.id && (
+              {editingMessageId !== message.id && !isInComparison && (
                 <div className="absolute top-2 right-2 flex items-center gap-0.5">
                   <button
                     onClick={() => setOpenMenuId((id) => (id === message.id ? null : message.id))}
@@ -785,7 +879,7 @@ export default function Chat({
               )}
             </div>
           </div>
-        ))}
+        )})}
         {isLoading && !streamingMessageId && (
           <div className="flex justify-start">
             <div
